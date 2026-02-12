@@ -11,29 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.check.outputs.version }}
-      needs_bump: ${{ steps.check.outputs.needs_bump }}
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Validate and compare versions
+      - name: Validate tag matches package.json
         id: check
         run: |
-          # Install semver for proper semantic version comparison
-          npm install -g semver
-          
           # Extract version from tag (remove 'v' prefix)
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          
-          # Validate tag is valid semver
-          if ! semver "$TAG_VERSION" > /dev/null 2>&1; then
-            echo "::error::Invalid semver tag: $TAG_VERSION"
-            exit 1
-          fi
           
           # Extract version from package.json
           PKG_VERSION=$(node -p "require('./package.json').version")
@@ -41,24 +26,16 @@ jobs:
           echo "Tag version: $TAG_VERSION"
           echo "Package.json version: $PKG_VERSION"
           
-          # Compare versions using semver
-          # semver returns the higher version, or empty if invalid
-          COMPARISON=$(semver "$TAG_VERSION" "$PKG_VERSION" | tail -1)
-          
-          if [ "$TAG_VERSION" = "$PKG_VERSION" ]; then
-            echo "✅ Versions match exactly: $TAG_VERSION"
-            echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
-            echo "needs_bump=false" >> $GITHUB_OUTPUT
-          elif [ "$COMPARISON" = "$TAG_VERSION" ]; then
-            echo "✅ Tag version ($TAG_VERSION) is greater than package.json ($PKG_VERSION)"
-            echo "   Will auto-bump package.json to $TAG_VERSION"
-            echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
-            echo "needs_bump=true" >> $GITHUB_OUTPUT
-          else
-            echo "::error::Tag version ($TAG_VERSION) is less than package.json version ($PKG_VERSION)"
-            echo "::error::Cannot publish an older version. Current: $PKG_VERSION, Tag: $TAG_VERSION"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Version mismatch!"
+            echo "::error::Tag: v$TAG_VERSION"
+            echo "::error::package.json: $PKG_VERSION"
+            echo "::error::Please ensure package.json version matches the tag before releasing."
             exit 1
           fi
+          
+          echo "✅ Versions match: $TAG_VERSION"
+          echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
 
   test:
     needs: validate
@@ -82,7 +59,7 @@ jobs:
     needs: [validate, test]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
     
     steps:
@@ -99,12 +76,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Bump version in package.json
-        if: needs.validate.outputs.needs_bump == 'true'
-        run: |
-          npm version ${{ needs.validate.outputs.version }} --no-git-tag-version
-          echo "📝 Updated package.json to version ${{ needs.validate.outputs.version }}"
-      
       - name: Build
         run: npm run build
       
@@ -113,23 +84,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Commit version bump
-        if: needs.validate.outputs.needs_bump == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git commit -m "chore: bump version to ${{ needs.validate.outputs.version }} [skip ci]"
-          git push origin HEAD:master
-      
       - name: Summary
         run: |
           echo "## 📦 Published @unlimitechcloud/devlink@${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.validate.outputs.needs_bump }}" = "true" ]; then
-            echo "ℹ️ Version was auto-bumped from package.json" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
           echo "Install with:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "npm install @unlimitechcloud/devlink@${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY

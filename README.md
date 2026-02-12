@@ -314,10 +314,22 @@ AI agents can use DevLink to:
 - [Configuration](docs/installation/configuration.md) - Config file reference
 - [File Locking](docs/store/locking.md) - Concurrent operation safety
 
-## Contributing
+## Feedback
 
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
+We welcome feedback, suggestions, and ideas for improvement. Please open an [issue](https://github.com/unlimitechcloud/devlink/issues) to share your thoughts.
+
+Note: This project does not accept code contributions via pull requests.
+
+## About This Project
+
+This tool was built following the principles defined in the whitepaper **"A Formal Definition of AI-First"** by [Unlimitech Cloud LLC](https://unlimitech.cloud).
+
+📄 [Read the Whitepaper](https://ulcl.link/whpp-ai-first) | [More Whitepapers](https://ulcl.link/whpp)
+
+The whitepaper provides a formal functional definition that enables seamless integration with AI coding assistants and autonomous agents—making tools like DevLink naturally AI-ready.
+
+This project represents Unlimitech Cloud LLC's commitment to knowledge sharing: contributing frameworks and practical tools that help organizations navigate complex challenges. We believe sharing knowledge openly strengthens the broader ecosystem and creates value for everyone.
 
 ## License
 
-MIT © [UnlimitechCloud](https://github.com/unlimitechcloud)
+MIT © [Unlimitech Cloud LLC](https://unlimitech.cloud)
