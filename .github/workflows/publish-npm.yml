@@ -1,0 +1,128 @@
+name: Publish to npm (Public)
+
+on:
+  push:
+    tags:
+      - 'v*-npm'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      needs_bump: ${{ steps.check.outputs.needs_bump }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Validate and compare versions
+        id: check
+        run: |
+          # Install semver for proper semantic version comparison
+          npm install -g semver
+          
+          # Extract version from tag (remove 'v' prefix and '-npm' suffix)
+          RAW_TAG="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="${RAW_TAG%-npm}"
+          
+          # Validate tag is valid semver
+          if ! semver "$TAG_VERSION" > /dev/null 2>&1; then
+            echo "::error::Invalid semver tag: $TAG_VERSION"
+            exit 1
+          fi
+          
+          # Extract version from package.json
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          
+          echo "Tag version: $TAG_VERSION"
+          echo "Package.json version: $PKG_VERSION"
+          
+          # Compare versions using semver
+          # semver returns the higher version, or empty if invalid
+          COMPARISON=$(semver "$TAG_VERSION" "$PKG_VERSION" | tail -1)
+          
+          if [ "$TAG_VERSION" = "$PKG_VERSION" ]; then
+            echo "✅ Versions match exactly: $TAG_VERSION"
+            echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
+            echo "needs_bump=false" >> $GITHUB_OUTPUT
+          elif [ "$COMPARISON" = "$TAG_VERSION" ]; then
+            echo "✅ Tag version ($TAG_VERSION) is greater than package.json ($PKG_VERSION)"
+            echo "   Will set version to $TAG_VERSION for publish"
+            echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
+            echo "needs_bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Tag version ($TAG_VERSION) is less than package.json version ($PKG_VERSION)"
+            echo "::error::Cannot publish an older version. Current: $PKG_VERSION, Tag: $TAG_VERSION"
+            exit 1
+          fi
+
+  test:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+
+  publish:
+    needs: [validate, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Set version
+        run: npm version ${{ needs.validate.outputs.version }} --no-git-tag-version --allow-same-version
+      
+      - name: Remove publishConfig (use npm public registry)
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            delete pkg.publishConfig;
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
+      
+      - name: Summary
+        run: |
+          echo "## 📦 Published @unlimitechcloud/devlink@${{ needs.validate.outputs.version }} to npm" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🌐 Public registry: https://www.npmjs.com/package/@unlimitechcloud/devlink" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Install with:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "npm install @unlimitechcloud/devlink@${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

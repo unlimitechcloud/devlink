@@ -1,0 +1,13 @@
+{
+  "name": "@test/sample-lib",
+  "version": "1.0.0",
+  "description": "Sample library for testing dev-link v1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "keywords": ["test", "sample"],
+  "author": "Test",
+  "license": "MIT"
+}

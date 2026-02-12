@@ -1,0 +1,10 @@
+{
+  "name": "utils-helper",
+  "version": "1.0.0",
+  "description": "Simple utility helper for testing",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "license": "MIT"
+}
