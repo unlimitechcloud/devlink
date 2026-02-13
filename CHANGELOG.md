@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.3] - 2025-02-12
+
+### Fixed
+- Glob patterns with `**` (recursive) now work correctly (e.g., `dist/**/*.js`)
+- Negation patterns in `files` field now properly exclude files (e.g., `!dist/**/*.spec.js`)
+
+### Added
+- Tests for glob pattern matching with fixtures
+
 ## [1.0.2] - 2025-02-12
 
 ### Added

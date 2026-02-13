@@ -136,3 +136,51 @@ describe("Publish Command", () => {
     expect(versions).toContain("2.0.0");
   });
 });
+
+describe("Publish Command - Glob Patterns", () => {
+  const GLOB_FIXTURE_PATH = path.join(process.cwd(), "fixtures/packages/@test/glob-patterns");
+
+  beforeEach(async () => {
+    await fs.mkdir(TEST_STORE_PATH, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(TEST_STORE_PATH, { recursive: true, force: true });
+  });
+
+  it("should match recursive glob pattern dist/**/*.js", async () => {
+    const result = await publishPackage(GLOB_FIXTURE_PATH);
+    
+    // Should include: index.js, utils/helper.js, helpers/format.js
+    // Should exclude: index.spec.js, utils/helper.spec.js (negation pattern)
+    const destDir = result.path;
+    
+    // Check included files exist
+    await expect(fs.access(path.join(destDir, "dist/index.js"))).resolves.not.toThrow();
+    await expect(fs.access(path.join(destDir, "dist/utils/helper.js"))).resolves.not.toThrow();
+    await expect(fs.access(path.join(destDir, "dist/helpers/format.js"))).resolves.not.toThrow();
+    
+    // Check .d.ts files are included
+    await expect(fs.access(path.join(destDir, "dist/index.d.ts"))).resolves.not.toThrow();
+    await expect(fs.access(path.join(destDir, "dist/utils/helper.d.ts"))).resolves.not.toThrow();
+    await expect(fs.access(path.join(destDir, "dist/helpers/format.d.ts"))).resolves.not.toThrow();
+  });
+
+  it("should exclude files matching negation pattern !dist/**/*.spec.js", async () => {
+    const result = await publishPackage(GLOB_FIXTURE_PATH);
+    const destDir = result.path;
+    
+    // Check spec files are NOT included
+    await expect(fs.access(path.join(destDir, "dist/index.spec.js"))).rejects.toThrow();
+    await expect(fs.access(path.join(destDir, "dist/utils/helper.spec.js"))).rejects.toThrow();
+    await expect(fs.access(path.join(destDir, "dist/index.spec.d.ts"))).rejects.toThrow();
+  });
+
+  it("should publish correct number of files with glob patterns", async () => {
+    const result = await publishPackage(GLOB_FIXTURE_PATH);
+    
+    // Expected: package.json + 3 .js files + 3 .d.ts files = 7 files
+    // Excluded: 2 .spec.js + 1 .spec.d.ts = 3 files excluded
+    expect(result.files).toBe(7);
+  });
+});

@@ -25,12 +25,30 @@ async function readPackageManifest(dir: string): Promise<PackageManifest> {
  */
 async function getFilesToPublish(dir: string, manifest: PackageManifest): Promise<string[]> {
   const files: string[] = ["package.json"];
+  const excludePatterns: string[] = [];
   
   if (manifest.files && manifest.files.length > 0) {
-    // Use files field from package.json
+    // Separate include and exclude patterns
     for (const pattern of manifest.files) {
-      const matches = await globFiles(dir, pattern);
-      files.push(...matches);
+      if (pattern.startsWith("!")) {
+        excludePatterns.push(pattern.slice(1));
+      } else {
+        const matches = await globFiles(dir, pattern);
+        files.push(...matches);
+      }
+    }
+    
+    // Apply exclusions
+    if (excludePatterns.length > 0) {
+      const excludeFiles = new Set<string>();
+      for (const pattern of excludePatterns) {
+        const matches = await globFiles(dir, pattern);
+        matches.forEach(f => excludeFiles.add(f));
+      }
+      // Filter out excluded files (keep package.json always)
+      const filtered = files.filter(f => f === "package.json" || !excludeFiles.has(f));
+      files.length = 0;
+      files.push(...filtered);
     }
   } else {
     // Default: include common directories
@@ -64,11 +82,17 @@ async function getFilesToPublish(dir: string, manifest: PackageManifest): Promis
 
 /**
  * Simple glob implementation for file patterns
+ * Supports: *, **, negation (!pattern)
  */
 async function globFiles(baseDir: string, pattern: string): Promise<string[]> {
   const results: string[] = [];
   
-  // Handle directory patterns
+  // Skip negation patterns (handled separately)
+  if (pattern.startsWith("!")) {
+    return results;
+  }
+  
+  // Handle directory patterns (no wildcards)
   if (!pattern.includes("*")) {
     const fullPath = path.join(baseDir, pattern);
     try {
@@ -85,14 +109,43 @@ async function globFiles(baseDir: string, pattern: string): Promise<string[]> {
     return results;
   }
   
-  // Handle glob patterns (simplified)
+  // Handle ** (recursive) patterns like dist/**/*.js
+  if (pattern.includes("**")) {
+    const parts = pattern.split("**");
+    const prefix = parts[0].replace(/\/$/, ""); // e.g., "dist"
+    const suffix = parts[1]?.replace(/^\//, "") || ""; // e.g., "*.js"
+    
+    const searchDir = prefix ? path.join(baseDir, prefix) : baseDir;
+    
+    try {
+      const allFiles = await getAllFiles(searchDir, baseDir);
+      
+      if (suffix) {
+        // Filter by suffix pattern
+        const suffixRegex = new RegExp(
+          suffix
+            .replace(/\./g, "\\.")
+            .replace(/\*/g, "[^/]*")
+          + "$"
+        );
+        results.push(...allFiles.filter(f => suffixRegex.test(f)));
+      } else {
+        results.push(...allFiles);
+      }
+    } catch {
+      // Directory doesn't exist
+    }
+    return results;
+  }
+  
+  // Handle simple glob patterns (single *)
   const dir = path.dirname(pattern);
   const filePattern = path.basename(pattern);
   const searchDir = path.join(baseDir, dir === "." ? "" : dir);
   
   try {
     const entries = await fs.readdir(searchDir, { withFileTypes: true });
-    const regex = new RegExp("^" + filePattern.replace(/\*/g, ".*") + "$");
+    const regex = new RegExp("^" + filePattern.replace(/\./g, "\\.").replace(/\*/g, ".*") + "$");
     
     for (const entry of entries) {
       if (regex.test(entry.name)) {
