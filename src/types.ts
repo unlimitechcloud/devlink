@@ -158,6 +158,14 @@ export interface ModeConfig {
   args?: string[];
   /** @deprecated Use namespaces instead */
   storeFolder?: string;
+  /**
+   * Glob patterns for packages whose dependencies should be marked as optional peerDependencies.
+   * When DevLink copies a package to node_modules, it will convert matching dependencies
+   * to peerDependencies with optional:true in peerDependenciesMeta.
+   * This prevents npm from trying to resolve them from the registry.
+   * Example: ["@webforgeai/*"] marks all @webforgeai packages as optional peers.
+   */
+  peerOptional?: string[];
   beforeAll?: () => Promise<void> | void;
   afterAll?: () => Promise<void> | void;
   beforeEach?: (pkg: ResolvedPackage) => Promise<void> | void;

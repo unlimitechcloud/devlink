@@ -155,6 +155,50 @@ function getBool(flags: Record<string, any>, ...keys: string[]): boolean {
 }
 
 // ============================================================================
+// Documentation Hints
+// ============================================================================
+
+/**
+ * Maps commands to their documentation paths
+ */
+const COMMAND_DOCS: Record<string, string> = {
+  publish: "publishing/publish",
+  push: "publishing/push",
+  install: "installation/install",
+  list: "inspection/list",
+  resolve: "inspection/resolve",
+  consumers: "inspection/consumers",
+  remove: "maintenance/remove",
+  verify: "maintenance/verify",
+  prune: "maintenance/prune",
+  docs: "agents",
+};
+
+/**
+ * Print documentation hints for a command
+ */
+function printDocHints(command?: string): void {
+  console.error("");
+  console.error("📚 Documentation:");
+  if (command && COMMAND_DOCS[command]) {
+    console.error(`   devlink docs ${COMMAND_DOCS[command]}    Command reference`);
+  }
+  console.error("   devlink docs agents              Complete guide for AI agents");
+  console.error("   devlink --help                   General help");
+}
+
+/**
+ * Print error with documentation hints
+ */
+function printErrorWithHints(message: string, command?: string): void {
+  console.error(`\n✗ Error: ${message}`);
+  if (command) {
+    console.error(`\nRun 'devlink ${command} --help' for usage information.`);
+  }
+  printDocHints(command);
+}
+
+// ============================================================================
 // Help System
 // ============================================================================
 
@@ -195,6 +239,11 @@ EXAMPLES
   devlink list                       List all packages
   devlink install --dev              Install in dev mode
   devlink resolve pkg@1.0.0          Find package location
+
+DOCUMENTATION
+  devlink docs                       Show documentation index
+  devlink docs agents                Complete guide for AI agents
+  devlink docs <topic>               Show specific topic
 
 Run 'devlink <command> --help' for detailed help on a specific command.
 `);
@@ -271,6 +320,8 @@ OPTIONS
   -c, --config <path>       Path to config file
   --dev                     Force dev mode
   --prod                    Force prod mode
+  --npm                     Also run 'npm install' after DevLink install
+  --run-scripts             Allow npm scripts to run (default: scripts disabled)
   --repo <path>             Use custom repo path
 
 CONFIG FILE
@@ -283,6 +334,7 @@ CONFIG FILE
     dev: () => ({
       manager: "store",
       namespaces: ["feature", "global"],
+      peerOptional: ["@scope/*"],
     }),
     prod: () => ({
       manager: "npm",
@@ -290,9 +342,18 @@ CONFIG FILE
   };
 
 EXAMPLES
-  devlink install                    Use config file
-  devlink install --dev              Force dev mode
-  devlink install -n feature,global  Override namespaces
+  devlink install                         Use config file
+  devlink install --dev                   Force dev mode
+  devlink install --dev --npm             Install from store, then run npm install
+  devlink install --dev --npm --run-scripts  Also run npm lifecycle scripts
+  devlink install -n feature,global       Override namespaces
+
+WORKFLOW
+  For projects with internal dependencies not published to npm:
+  
+  1. devlink install --dev --npm     # Single command setup
+  
+  This replaces the need for preinstall/postinstall scripts in package.json.
 `);
 }
 
@@ -578,6 +639,8 @@ async function main(): Promise<void> {
         dev: getBool(args.flags, "dev"),
         prod: getBool(args.flags, "prod"),
         namespaces: getStringArray(args.flags, "n", "namespaces"),
+        npm: getBool(args.flags, "npm"),
+        runScripts: getBool(args.flags, "run-scripts", "runScripts"),
       });
       break;
     
@@ -591,8 +654,7 @@ async function main(): Promise<void> {
     
     case "resolve":
       if (args.positional.length === 0) {
-        console.error("Error: resolve requires at least one package spec (pkg@version)");
-        console.error("Run 'devlink resolve --help' for usage");
+        printErrorWithHints("resolve requires at least one package spec (pkg@version)", "resolve");
         process.exit(1);
       }
       await handleResolve({
@@ -613,8 +675,7 @@ async function main(): Promise<void> {
     
     case "remove":
       if (args.positional.length === 0) {
-        console.error("Error: remove requires a target (package@version, package, or namespace)");
-        console.error("Run 'devlink remove --help' for usage");
+        printErrorWithHints("remove requires a target (package@version, package, or namespace)", "remove");
         process.exit(1);
       }
       await handleRemove({
@@ -643,13 +704,13 @@ async function main(): Promise<void> {
       break;
     
     default:
-      console.error(`Unknown command: ${args.command}`);
-      console.error("Run 'devlink --help' for available commands");
+      printErrorWithHints(`Unknown command: ${args.command}`);
       process.exit(1);
   }
 }
 
 main().catch((error) => {
-  console.error("Error:", error.message);
+  console.error(`\n✗ Error: ${error.message}`);
+  printDocHints();
   process.exit(1);
 });

@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.4] - 2026-02-17
+
+### Added
+- `--npm` flag for `devlink install` command
+  - Runs `npm install` before DevLink installs packages
+  - By default runs with `--ignore-scripts` to prevent loops
+- `--run-scripts` flag for `devlink install` command
+  - Allows npm scripts to run when using `--npm`
+- `peerOptional` configuration option for dev mode
+  - Transforms matching dependencies to optional peerDependencies when copying packages
+  - Prevents npm from trying to resolve internal dependencies from the registry
+  - Supports glob patterns: `@scope/*`, exact names, or `*` for all
+  - Only modifies copies in node_modules, store packages remain unchanged
+- Documentation hints on CLI errors
+  - Shows relevant documentation paths when commands are used incorrectly
+  - Always references `devlink docs agents` for AI agents
 
 ## [1.0.3] - 2025-02-12
 

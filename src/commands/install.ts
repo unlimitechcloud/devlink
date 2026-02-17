@@ -4,12 +4,100 @@
 
 import fs from "fs/promises";
 import path from "path";
-import type { DevLinkConfig, ModeConfig, ResolvedPackage, Lockfile, InstalledPackage } from "../types.js";
+import { spawn } from "child_process";
+import type { DevLinkConfig, ModeConfig, ResolvedPackage, Lockfile, InstalledPackage, PackageManifest } from "../types.js";
 import { withStoreLock } from "../core/lock.js";
 import { readRegistry } from "../core/registry.js";
 import { readInstallations, writeInstallations, registerProject } from "../core/installations.js";
 import { resolvePackage } from "../core/resolver.js";
 import { getPackagePath, DEFAULT_NAMESPACE, LOCKFILE_NAME, DEFAULT_CONFIG_FILES } from "../constants.js";
+
+/**
+ * Check if a package name matches a glob pattern
+ * Supports simple patterns like "@scope/*" or exact matches
+ */
+function matchesPattern(packageName: string, pattern: string): boolean {
+  if (pattern === "*") return true;
+  if (pattern.endsWith("/*")) {
+    const prefix = pattern.slice(0, -1); // Remove the *
+    return packageName.startsWith(prefix);
+  }
+  return packageName === pattern;
+}
+
+/**
+ * Check if a package name matches any of the patterns
+ */
+function matchesAnyPattern(packageName: string, patterns: string[]): boolean {
+  return patterns.some(pattern => matchesPattern(packageName, pattern));
+}
+
+/**
+ * Transform package.json to mark matching dependencies as optional peerDependencies
+ * This modifies the copied package.json in node_modules, not the original in the store
+ */
+async function applyPeerOptional(
+  packageJsonPath: string,
+  peerOptionalPatterns: string[]
+): Promise<void> {
+  const content = await fs.readFile(packageJsonPath, "utf-8");
+  const manifest: PackageManifest & { peerDependenciesMeta?: Record<string, { optional?: boolean }> } = JSON.parse(content);
+  
+  let modified = false;
+  
+  // Process dependencies - move matching ones to peerDependencies with optional meta
+  if (manifest.dependencies) {
+    const depsToMove: string[] = [];
+    
+    for (const depName of Object.keys(manifest.dependencies)) {
+      if (matchesAnyPattern(depName, peerOptionalPatterns)) {
+        depsToMove.push(depName);
+      }
+    }
+    
+    if (depsToMove.length > 0) {
+      // Initialize peerDependencies and peerDependenciesMeta if needed
+      manifest.peerDependencies = manifest.peerDependencies || {};
+      manifest.peerDependenciesMeta = manifest.peerDependenciesMeta || {};
+      
+      for (const depName of depsToMove) {
+        const version = manifest.dependencies[depName];
+        
+        // Move to peerDependencies
+        manifest.peerDependencies[depName] = version;
+        
+        // Mark as optional
+        manifest.peerDependenciesMeta[depName] = { optional: true };
+        
+        // Remove from dependencies
+        delete manifest.dependencies[depName];
+      }
+      
+      // Clean up empty dependencies object
+      if (Object.keys(manifest.dependencies).length === 0) {
+        delete manifest.dependencies;
+      }
+      
+      modified = true;
+    }
+  }
+  
+  // Also mark existing peerDependencies as optional if they match
+  if (manifest.peerDependencies) {
+    manifest.peerDependenciesMeta = manifest.peerDependenciesMeta || {};
+    
+    for (const depName of Object.keys(manifest.peerDependencies)) {
+      if (matchesAnyPattern(depName, peerOptionalPatterns) && !manifest.peerDependenciesMeta[depName]) {
+        manifest.peerDependenciesMeta[depName] = { optional: true };
+        modified = true;
+      }
+    }
+  }
+  
+  if (modified) {
+    await fs.writeFile(packageJsonPath, JSON.stringify(manifest, null, 2));
+  }
+}
 
 /**
  * Load configuration file
@@ -65,7 +153,8 @@ async function copyDir(src: string, dest: string): Promise<void> {
 async function linkPackage(
   projectPath: string,
   packageName: string,
-  sourcePath: string
+  sourcePath: string,
+  peerOptionalPatterns?: string[]
 ): Promise<void> {
   const nodeModulesPath = path.join(projectPath, "node_modules");
   let targetPath: string;
@@ -85,6 +174,16 @@ async function linkPackage(
   
   // Copy package
   await copyDir(sourcePath, targetPath);
+  
+  // Apply peerOptional transformations if configured
+  if (peerOptionalPatterns && peerOptionalPatterns.length > 0) {
+    const packageJsonPath = path.join(targetPath, "package.json");
+    try {
+      await applyPeerOptional(packageJsonPath, peerOptionalPatterns);
+    } catch {
+      // Ignore if package.json doesn't exist or can't be modified
+    }
+  }
 }
 
 /**
@@ -113,11 +212,43 @@ export interface InstallOptions {
   config?: string;
   mode?: "dev" | "prod";
   namespaces?: string[];
+  runNpm?: boolean;
+  runScripts?: boolean;
 }
 
 export interface InstallResult {
   installed: ResolvedPackage[];
   skipped: { name: string; version: string; reason: string }[];
+  npmExitCode?: number;
+}
+
+/**
+ * Run npm install
+ * By default uses --ignore-scripts to avoid loops with preinstall/postinstall
+ * Use runScripts=true to allow scripts to run
+ */
+async function runNpmInstall(runScripts: boolean = false): Promise<number> {
+  return new Promise((resolve) => {
+    const args = ["install"];
+    if (!runScripts) {
+      args.push("--ignore-scripts");
+    }
+    
+    console.log(`\n📦 Running npm ${args.join(" ")}...`);
+    
+    const npm = spawn("npm", args, {
+      stdio: "inherit",
+      shell: true,
+    });
+    
+    npm.on("close", (code) => {
+      resolve(code ?? 0);
+    });
+    
+    npm.on("error", () => {
+      resolve(1);
+    });
+  });
 }
 
 /**
@@ -171,6 +302,15 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     await modeConfig.beforeAll();
   }
   
+  // If --npm flag is set, run npm install FIRST, then install DevLink packages
+  // This ensures DevLink packages are not removed by npm's prune
+  if (options.runNpm) {
+    result.npmExitCode = await runNpmInstall(options.runScripts);
+    if (result.npmExitCode !== 0) {
+      return result;
+    }
+  }
+  
   // Process each package
   for (const [pkgName, versions] of Object.entries(config.packages)) {
     const version = mode === "dev" ? versions.dev : versions.prod;
@@ -206,7 +346,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     }
     
     // Link package
-    await linkPackage(projectPath, pkgName, resolution.path!);
+    await linkPackage(projectPath, pkgName, resolution.path!, modeConfig.peerOptional);
     
     // Update lockfile
     lockfile.packages[pkgName] = {
@@ -259,6 +399,8 @@ export async function handleInstall(args: {
   dev?: boolean;
   prod?: boolean;
   namespaces?: string[];
+  npm?: boolean;
+  runScripts?: boolean;
 }): Promise<void> {
   try {
     const mode = args.prod ? "prod" : args.dev ? "dev" : undefined;
@@ -269,6 +411,8 @@ export async function handleInstall(args: {
       config: args.config,
       mode,
       namespaces: args.namespaces,
+      runNpm: args.npm,
+      runScripts: args.runScripts,
     });
     
     if (result.installed.length > 0) {
@@ -287,6 +431,16 @@ export async function handleInstall(args: {
     
     if (result.installed.length === 0 && result.skipped.length === 0) {
       console.log("No packages to install");
+    }
+    
+    // Report npm result if it was run
+    if (args.npm) {
+      if (result.npmExitCode === 0) {
+        console.log("\n✓ npm install completed successfully");
+      } else {
+        console.error(`\n✗ npm install failed with exit code ${result.npmExitCode}`);
+        process.exit(result.npmExitCode || 1);
+      }
     }
   } catch (error: any) {
     console.error(`✗ Install failed: ${error.message}`);

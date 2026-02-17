@@ -253,6 +253,8 @@ devlink install [options]
 | `-c, --config <path>` | Path to config file |
 | `--dev` | Force dev mode |
 | `--prod` | Force prod mode |
+| `--npm` | Run `npm install` before DevLink installs packages |
+| `--run-scripts` | Allow npm scripts to run (by default npm runs with `--ignore-scripts`) |
 
 **Configuration file** (`devlink.config.mjs`):
 ```javascript
@@ -267,6 +269,7 @@ export default {
   dev: (ctx) => ({
     manager: "store",                    // Use DevLink store
     namespaces: ["feature-v2", "global"], // Search order
+    peerOptional: ["@scope/*"],          // Transform to optional peers
   }),
 
   // Production mode configuration
@@ -287,6 +290,33 @@ export default {
 };
 ```
 
+#### peerOptional
+
+When packages in the store have internal dependencies (e.g., `@scope/core` depends on `@scope/utils`), npm will try to resolve them from the registry during `npm install`. If these packages aren't published to npm yet, the install fails.
+
+The `peerOptional` option solves this by transforming matching dependencies when copying packages to `node_modules`:
+
+```javascript
+dev: (ctx) => ({
+  manager: "store",
+  peerOptional: ["@scope/*"],  // Glob patterns
+})
+```
+
+**Transformation applied to copied packages:**
+
+| Original | Transformed |
+|----------|-------------|
+| `dependencies: { "@scope/utils": "1.0.0" }` | `peerDependencies: { "@scope/utils": "1.0.0" }` |
+| (none) | `peerDependenciesMeta: { "@scope/utils": { "optional": true } }` |
+
+**Supported patterns:**
+- `@scope/*` - All packages in scope
+- `@scope/pkg` - Exact package name
+- `*` - All packages
+
+**Important:** Only the copy in `node_modules` is modified. The original package in the store remains unchanged.
+
 **What it does**:
 1. Reads devlink.config.mjs
 2. Determines mode (dev/prod)
@@ -305,6 +335,12 @@ devlink install --dev
 
 # Override namespaces
 devlink install -n feature-v2,global
+
+# Run npm install first, then DevLink
+devlink install --dev --npm
+
+# Allow npm scripts to run
+devlink install --dev --npm --run-scripts
 ```
 
 **Lock file** (`devlink.lock`):
@@ -714,6 +750,8 @@ export default {
   dev: () => ({
     manager: "store",
     namespaces: ["global"],
+    // If packages have internal dependencies, mark them as optional
+    peerOptional: ["@myorg/*"],
   }),
 };
 ```
@@ -722,6 +760,57 @@ export default {
 ```bash
 devlink install --dev
 ```
+
+### Using DevLink as Default Install Command
+
+Replace `npm install` with DevLink during development using npm lifecycle hooks:
+
+**package.json:**
+```json
+{
+  "scripts": {
+    "predev:install": "echo '🔧 Preparing development environment...'",
+    "dev:install": "devlink install --dev --npm",
+    "postdev:install": "echo '✅ Development environment ready'"
+  }
+}
+```
+
+**Usage:**
+```bash
+npm run dev:install
+```
+
+**Execution flow:**
+1. `predev:install` - Runs before (preparation tasks)
+2. `dev:install` - Runs npm install + DevLink install
+3. `postdev:install` - Runs after (verification, notifications)
+
+This pattern ensures DevLink packages are always installed after npm dependencies, preventing npm from pruning them.
+
+### Monorepo with Internal Dependencies
+
+When your SDK packages depend on each other (e.g., `@myorg/http` depends on `@myorg/core`), use `peerOptional` to prevent npm from trying to resolve them from the registry:
+
+```javascript
+// devlink.config.mjs
+export default {
+  packages: {
+    "@myorg/core": { dev: "1.0.0" },
+    "@myorg/http": { dev: "1.0.0" },  // depends on @myorg/core
+    "@myorg/sst": { dev: "1.0.0" },   // depends on @myorg/http
+  },
+  dev: () => ({
+    manager: "store",
+    peerOptional: ["@myorg/*"],  // All internal deps become optional peers
+  }),
+  prod: () => ({
+    manager: "npm",  // In prod, npm resolves from registry normally
+  }),
+};
+```
+
+With `peerOptional`, DevLink transforms the copied packages so npm doesn't fail looking for unpublished internal dependencies.
 
 ### Development Cycle
 

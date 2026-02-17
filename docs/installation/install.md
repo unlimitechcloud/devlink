@@ -17,6 +17,8 @@ devlink install [options]
 | `--dev` | Force dev mode |
 | `--prod` | Force prod mode |
 | `--repo <path>` | Use custom repo path |
+| `--npm` | Run `npm install` before DevLink installs packages |
+| `--run-scripts` | Allow npm scripts to run (by default npm runs with `--ignore-scripts`) |
 
 ## Description
 
@@ -85,6 +87,16 @@ devlink install -n feature-v2,global
 
 ```bash
 devlink install -c ./config/devlink.config.mjs
+```
+
+### Combined with npm install
+
+```bash
+# Run npm install first, then DevLink
+devlink install --dev --npm
+
+# Allow npm scripts to run
+devlink install --dev --npm --run-scripts
 ```
 
 ## Resolution Process
@@ -176,6 +188,61 @@ Error: devlink.config.mjs not found
 ```
 
 Create a configuration file in your project root.
+
+## npm Integration
+
+### Using --npm Flag
+
+The `--npm` flag runs `npm install` before DevLink installs packages. This is useful when you want a single command to handle both npm dependencies and DevLink packages.
+
+```bash
+devlink install --dev --npm
+```
+
+**Execution order:**
+1. `npm install --ignore-scripts` runs first
+2. DevLink installs packages from the store
+
+By default, npm runs with `--ignore-scripts` to prevent infinite loops (e.g., if you have a `postinstall` script that calls DevLink). Use `--run-scripts` to allow npm scripts:
+
+```bash
+devlink install --dev --npm --run-scripts
+```
+
+### Replacing npm install with DevLink
+
+A recommended pattern is to use DevLink as your default install command during development. This ensures DevLink packages are always installed after npm dependencies.
+
+**package.json:**
+```json
+{
+  "scripts": {
+    "predev:install": "echo '🔧 Preparing development environment...'",
+    "dev:install": "devlink install --dev --npm",
+    "postdev:install": "echo '✅ Development environment ready'"
+  }
+}
+```
+
+**Usage:**
+```bash
+npm run dev:install
+```
+
+**Execution flow:**
+1. `predev:install` - Runs before (preparation tasks)
+2. `dev:install` - Runs npm install + DevLink install
+3. `postdev:install` - Runs after (verification, notifications)
+
+This pattern:
+- Provides a single command for complete development setup
+- Uses npm lifecycle hooks (`pre` and `post` scripts)
+- Allows custom logic before and after installation
+- Prevents npm from pruning DevLink packages (since DevLink runs after npm)
+
+### Why This Order Matters
+
+When npm runs, it may prune packages from `node_modules` that aren't in `package.json`. By running npm first and DevLink second, DevLink packages are installed after npm's pruning, ensuring they remain in place.
 
 ## See Also
 

@@ -117,6 +117,8 @@ devlink install                    # Install using default mode
 devlink install --dev              # Force dev mode
 devlink install --prod             # Force prod mode
 devlink install -n feature,global  # Override namespace precedence
+devlink install --dev --npm        # Run npm install first, then DevLink
+devlink install --dev --npm --run-scripts  # Allow npm scripts to run
 ```
 
 #### `devlink list`
@@ -189,6 +191,7 @@ export default {
   dev: () => ({
     manager: "store",              // Use DevLink store
     namespaces: ["feature", "global"],  // Namespace precedence
+    peerOptional: ["@myorg/*"],    // Transform to optional peers
   }),
   
   // Prod mode configuration (optional)
@@ -197,6 +200,21 @@ export default {
   }),
 };
 ```
+
+### peerOptional
+
+When your packages have internal dependencies (e.g., `@myorg/core` depends on `@myorg/utils`), npm will try to resolve them from the registry during `npm install`. If these packages aren't published yet, npm fails.
+
+The `peerOptional` option solves this by transforming matching dependencies to optional peer dependencies in the copied packages. This tells npm not to resolve them from the registry.
+
+```javascript
+dev: () => ({
+  manager: "store",
+  peerOptional: ["@myorg/*"],  // All @myorg packages become optional peers
+})
+```
+
+**Note:** Only the copies in `node_modules` are modified. The original packages in the store remain unchanged.
 
 ### Global Options
 
@@ -268,6 +286,27 @@ devlink install --dev
 cd packages/core
 devlink push                       # Updates apps/web automatically
 ```
+
+### Using DevLink as Default Install Command
+
+Replace `npm install` with DevLink during development using npm lifecycle hooks:
+
+```json
+{
+  "scripts": {
+    "predev:install": "echo '🔧 Preparing development environment...'",
+    "dev:install": "devlink install --dev --npm",
+    "postdev:install": "echo '✅ Development environment ready'"
+  }
+}
+```
+
+Run `npm run dev:install` to:
+1. Execute preparation tasks (`predev:install`)
+2. Run npm install + DevLink install (`dev:install`)
+3. Execute post-install tasks (`postdev:install`)
+
+This ensures DevLink packages are always installed after npm dependencies, preventing npm from pruning them.
 
 ## Use with AI Agents
 

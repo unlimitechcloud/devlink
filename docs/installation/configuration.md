@@ -97,8 +97,70 @@ Uses the DevLink store to resolve packages:
 {
   manager: "store",
   namespaces: ["feature-v2", "global"],
+  peerOptional: ["@myorg/*"],  // Mark matching deps as optional peers
 }
 ```
+
+#### peerOptional
+
+When DevLink copies packages from the store to `node_modules`, it can automatically transform dependencies to optional peer dependencies. This prevents npm from trying to resolve them from the registry.
+
+```javascript
+dev: (ctx) => ({
+  manager: "store",
+  peerOptional: ["@myorg/*"],  // Glob patterns for packages to transform
+})
+```
+
+**How it works:**
+
+1. DevLink copies the package from the store to `node_modules`
+2. For each dependency that matches a `peerOptional` pattern:
+   - Moves it from `dependencies` to `peerDependencies`
+   - Adds `peerDependenciesMeta` with `optional: true`
+3. npm sees these as optional and doesn't try to resolve them from the registry
+
+**Supported patterns:**
+
+| Pattern | Matches |
+|---------|---------|
+| `@scope/*` | All packages in scope (e.g., `@myorg/core`, `@myorg/utils`) |
+| `@scope/pkg` | Exact package name |
+| `*` | All packages |
+
+**Example transformation:**
+
+Original `package.json` in store:
+```json
+{
+  "dependencies": {
+    "@myorg/core": "1.0.0",
+    "@myorg/utils": "1.0.0",
+    "lodash": "4.17.0"
+  }
+}
+```
+
+After DevLink copies with `peerOptional: ["@myorg/*"]`:
+```json
+{
+  "dependencies": {
+    "lodash": "4.17.0"
+  },
+  "peerDependencies": {
+    "@myorg/core": "1.0.0",
+    "@myorg/utils": "1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@myorg/core": { "optional": true },
+    "@myorg/utils": { "optional": true }
+  }
+}
+```
+
+**Important:** The original package in the store is never modified. Only the copy in `node_modules` is transformed.
+
+**Use case:** When developing a monorepo where packages depend on each other, but those packages aren't published to npm yet. Without `peerOptional`, npm would fail trying to resolve the internal dependencies from the registry.
 
 ### npm
 
@@ -131,9 +193,12 @@ export default {
   dev: (ctx) => ({
     manager: "store",
     namespaces: getNamespaces(ctx),
+    // Mark @myorg packages as optional peers so npm doesn't
+    // try to resolve them from the registry
+    peerOptional: ["@myorg/*"],
   }),
 
-  // Production mode: use npm
+  // Production mode: use npm (no peerOptional needed)
   prod: (ctx) => ({
     manager: "npm",
     args: ["--no-save"],
