@@ -3,6 +3,9 @@
  * DevLink CLI v2 - Local package development tool with namespaces
  */
 
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import {
   handlePublish,
   handlePush,
@@ -17,7 +20,11 @@ import {
 import { handleDocs, printDocsHelp } from "./commands/docs.js";
 import { setRepoPath, getStorePath, DEFAULT_NAMESPACE } from "./constants.js";
 
-const VERSION = "2.0.0";
+// Read version from package.json
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
+const VERSION = packageJson.version;
 
 interface ParsedArgs {
   command: string;

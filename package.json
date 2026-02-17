@@ -1,6 +1,6 @@
 {
   "name": "@unlimitechcloud/devlink",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Local package development and linking tool with namespace support",
   "type": "module",
   "main": "dist/index.js",

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.5] - 2026-02-17
+
+### Fixed
+- `--version` flag now reads version from package.json instead of hardcoded value
+
 ## [1.0.4] - 2026-02-17
 
 ### Added
