@@ -7,8 +7,8 @@ import path from "path";
 import crypto from "crypto";
 import type { PackageManifest, PublishResult, VersionEntry } from "../types.js";
 import { withStoreLock } from "../core/lock.js";
-import { readRegistry, writeRegistry, addPackageToRegistry } from "../core/registry.js";
-import { ensureNamespace, writePackageSignature } from "../core/store.js";
+import { readRegistry, writeRegistry, addPackageToRegistry, removePackageFromRegistry, getVersionFromRegistry } from "../core/registry.js";
+import { ensureNamespace, writePackageSignature, deletePackageVersion } from "../core/store.js";
 import { getPackagePath, DEFAULT_NAMESPACE, SIGNATURE_FILE } from "../constants.js";
 
 /**
@@ -258,8 +258,17 @@ export async function publishPackage(
   
   // Perform publish with lock
   return withStoreLock(async () => {
+    const registry = await readRegistry();
+    
     // Ensure namespace exists
     await ensureNamespace(namespace);
+    
+    // If version already exists, clean it up first (disk + registry)
+    const existing = getVersionFromRegistry(registry, namespace, manifest.name, manifest.version);
+    if (existing) {
+      await deletePackageVersion(namespace, manifest.name, manifest.version);
+      removePackageFromRegistry(registry, namespace, manifest.name, manifest.version);
+    }
     
     // Copy files
     await copyFiles(workingDir, destDir, files);
@@ -271,7 +280,6 @@ export async function publishPackage(
     await writePackageSignature(namespace, manifest.name, manifest.version, signature);
     
     // Update registry
-    const registry = await readRegistry();
     const entry: VersionEntry = {
       signature,
       published: new Date().toISOString(),

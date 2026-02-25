@@ -419,6 +419,7 @@ ARGUMENTS
 OPTIONS
   -n, --namespaces <list>   Namespace precedence (comma-separated)
   --flat                    Use flat output format
+  --path                    Output only store paths (machine-readable)
   --repo <path>             Use custom repo path
 
 EXAMPLES
@@ -668,6 +669,7 @@ async function main(): Promise<void> {
         specs: args.positional,
         namespaces: getStringArray(args.flags, "n", "namespace", "namespaces"),
         flat: getBool(args.flags, "flat"),
+        path: getBool(args.flags, "path"),
       });
       break;
     

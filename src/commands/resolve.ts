@@ -14,6 +14,7 @@ import { DEFAULT_NAMESPACE } from "../constants.js";
 export interface ResolveOptions {
   namespaces?: string[];
   flat?: boolean;
+  path?: boolean;
 }
 
 /**
@@ -36,6 +37,14 @@ export async function resolvePackagesCommand(
   
   const results = resolvePackages(packages, namespaces, registry);
   
+  if (options.path) {
+    // Output only resolved paths, one per line (machine-readable)
+    return results
+      .map(r => r.found && r.path ? r.path : '')
+      .filter(Boolean)
+      .join('\n');
+  }
+  
   if (options.flat) {
     return formatResolutionFlat(results);
   }
@@ -50,11 +59,13 @@ export async function handleResolve(args: {
   specs: string[];
   namespaces?: string[];
   flat?: boolean;
+  path?: boolean;
 }): Promise<void> {
   try {
     const output = await resolvePackagesCommand(args.specs, {
       namespaces: args.namespaces,
       flat: args.flat,
+      path: args.path,
     });
     
     console.log(output);

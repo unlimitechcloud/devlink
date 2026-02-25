@@ -1,0 +1,10 @@
+{
+  "name": "@test/with-internal-deps",
+  "version": "1.0.0",
+  "description": "Test package with internal dependencies",
+  "main": "dist/index.js",
+  "files": ["dist"],
+  "dependencies": {
+    "@test/sample-lib": "1.0.0"
+  }
+}
