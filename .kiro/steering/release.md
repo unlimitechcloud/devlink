@@ -1,6 +1,10 @@
+---
+inclusion: manual
+---
+
 # Release Guide for AI Assistants
 
-This document provides instructions for AI assistants to help manage releases of `@unlimitechcloud/devlink`.
+Instructions for AI assistants to manage releases of `@unlimitechcloud/devlink`.
 
 ## Prerequisites Check
 
@@ -206,10 +210,12 @@ Once version is confirmed:
 npm version 1.1.0 --no-git-tag-version
 ```
 
+3. **Update README.md** - Replace the "### Latest" section under "## Changelog" with the new version, date, and a concise summary (max 5-6 bullet points of the most notable changes). Keep the link to `CHANGELOG.md`.
+
 ### Step 4: Commit and Push
 
 ```bash
-git add CHANGELOG.md package.json package-lock.json
+git add CHANGELOG.md README.md package.json package-lock.json
 git commit -m "chore: release v1.1.0"
 git push origin master
 ```
@@ -282,10 +288,6 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Initial release
-- Namespace support for isolated package contexts
-- Commands: publish, push, install, list, resolve, consumers, remove, verify, prune
-- Declarative configuration via devlink.config.mjs
-- File locking for concurrent operations
 ```
 
 ## Workflow Summary
@@ -310,7 +312,7 @@ The AI assistant executes all commands directly. User interaction is only requir
 ├─────────────────────────────────────────────────────────────┤
 │ 6. Suggest version based on changes → User confirms          │
 ├─────────────────────────────────────────────────────────────┤
-│ 7. Update CHANGELOG.md and package.json                      │
+│ 7. Update CHANGELOG.md, README.md and package.json           │
 ├─────────────────────────────────────────────────────────────┤
 │ 8. Commit and push                                           │
 ├─────────────────────────────────────────────────────────────┤

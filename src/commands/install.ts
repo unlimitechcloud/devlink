@@ -98,6 +98,39 @@ async function linkBinEntries(projectPath: string, packageName: string): Promise
 }
 
 /**
+ * Remove broken symlinks from node_modules/.bin/
+ * Returns the number of broken links removed.
+ */
+async function cleanBrokenBinLinks(projectPath: string): Promise<number> {
+  const binDir = path.join(projectPath, "node_modules", ".bin");
+
+  let entries: string[];
+  try {
+    entries = await fs.readdir(binDir);
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    const linkPath = path.join(binDir, entry);
+    try {
+      const lstats = await fs.lstat(linkPath);
+      if (!lstats.isSymbolicLink()) continue;
+
+      // stat follows the symlink — if it throws, the target is gone
+      await fs.stat(linkPath);
+    } catch {
+      // Broken symlink — remove it
+      await fs.rm(linkPath, { force: true });
+      removed++;
+    }
+  }
+
+  return removed;
+}
+
+/**
  * Copy directory recursively
  */
 async function copyDir(src: string, dest: string): Promise<void> {
@@ -363,7 +396,11 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
         return result;
       }
       
-      // Phase 3.5: Link bin entries for devlink packages
+      // Phase 3.5: Clean broken bin symlinks + link bin entries
+      const brokenRemoved = await cleanBrokenBinLinks(projectPath);
+      if (brokenRemoved > 0) {
+        console.log(`  ↳ Cleaned ${brokenRemoved} broken bin symlink${brokenRemoved === 1 ? "" : "s"}`);
+      }
       let totalBinLinks = 0;
       for (const pkg of resolvedPackages) {
         totalBinLinks += await linkBinEntries(projectPath, pkg.name);
@@ -419,6 +456,13 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   // ================================================================
   // EXISTING: Direct copy to node_modules (without --npm)
   // ================================================================
+
+  // Clean broken bin symlinks before installing
+  const brokenRemoved = await cleanBrokenBinLinks(projectPath);
+  if (brokenRemoved > 0) {
+    console.log(`  ↳ Cleaned ${brokenRemoved} broken bin symlink${brokenRemoved === 1 ? "" : "s"}`);
+  }
+
   for (const [pkgName, versions] of Object.entries(config.packages)) {
     const version = mode === "dev" ? versions.dev : versions.prod;
     if (!version) {

@@ -20,6 +20,7 @@ devlink resolve <pkg@version> [...] [options]
 |--------|-------------|
 | `-n, --namespaces <list>` | Namespace precedence (comma-separated) |
 | `--flat` | Use flat output format |
+| `--path` | Output only store paths, one per line (machine-readable) |
 | `--repo <path>` | Use custom repo path |
 
 ## Description
@@ -124,6 +125,19 @@ Output:
 ✓ @scope/core@1.0.0        global     6761ca1f
 ✓ @scope/utils@2.0.0       global     a1b2c3d4
 ```
+
+### Path Output (Machine-Readable)
+
+```bash
+devlink resolve @scope/core@1.0.0 --path
+```
+
+Output:
+```
+~/.devlink/namespaces/global/@scope/core/1.0.0
+```
+
+Only resolved paths are printed, one per line. Unresolved packages produce no output. Useful for scripting.
 
 ## Use Cases
 

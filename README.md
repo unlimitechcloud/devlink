@@ -118,7 +118,6 @@ devlink install --dev              # Force dev mode
 devlink install --prod             # Force prod mode
 devlink install -n feature,global  # Override namespace precedence
 devlink install --dev --npm        # Run npm install first, then DevLink
-devlink install --dev --npm --run-scripts  # Allow npm scripts to run
 ```
 
 #### `devlink list`
@@ -168,8 +167,9 @@ Access embedded documentation from the CLI.
 
 ```bash
 devlink docs                       # Show documentation tree
-devlink docs agents                # AI agent guide
-devlink docs store/namespaces      # Specific topic
+devlink docs agents.md             # AI agent guide (root)
+devlink docs store/namespaces.md   # Specific topic
+devlink docs store/agents.md       # Store section agent guide
 ```
 
 ## Configuration
@@ -310,21 +310,19 @@ This ensures DevLink packages are always installed after npm dependencies, preve
 
 ## Use with AI Agents
 
-DevLink includes comprehensive documentation for AI coding assistants. The `AGENTS.md` file provides a self-contained guide that AI agents can use to understand and operate DevLink.
+DevLink includes comprehensive, hierarchical documentation designed for AI coding assistants. The documentation is embedded in the CLI and organized by section, each with its own agent guide.
 
 ```bash
-# View the AI agent guide
-devlink docs agents
+# View the root AI agent guide
+devlink docs agents.md
 
-# Or read the file directly
-cat AGENTS.md
+# Section-specific guides
+devlink docs store/agents.md
+devlink docs publishing/agents.md
+devlink docs installation/agents.md
 ```
 
-AI agents can use DevLink to:
-- Publish local packages during development
-- Install dependencies from the local store
-- Push updates to consumer projects
-- Manage namespaces for isolated testing
+AI agents can also read the development guide at `AGENTS.md` in the project root for codebase internals.
 
 ## Store Structure
 
@@ -346,12 +344,55 @@ AI agents can use DevLink to:
 
 ## Documentation
 
-📚 **[Full Documentation](docs/README.md)**
+📚 Access documentation directly from the CLI:
 
-- [Store Structure](docs/store/structure.md) - How the store is organized
-- [Namespaces](docs/store/namespaces.md) - Isolation and precedence
-- [Configuration](docs/installation/configuration.md) - Config file reference
-- [File Locking](docs/store/locking.md) - Concurrent operation safety
+```bash
+devlink docs                       # Browse documentation tree
+devlink docs agents.md             # Complete AI agent guide
+devlink docs store                 # List store documents
+devlink docs store/namespaces.md   # Specific topic
+```
+
+Each section has its own agent guide (`agents.md`) with context for that area:
+- `store/` — Store structure, namespaces, locking
+- `publishing/` — Publish and push commands
+- `installation/` — Install command and configuration
+- `inspection/` — List, resolve, consumers
+- `maintenance/` — Remove, verify, prune
+
+### Full Index
+
+- **Store**
+  - [Structure](docs/store/structure.md) — Store directory layout and registry
+  - [Namespaces](docs/store/namespaces.md) — Namespace isolation and precedence
+  - [Locking](docs/store/locking.md) — File locking and concurrency
+- **Publishing**
+  - [Publish](docs/publishing/publish.md) — Publishing packages to the store
+  - [Push](docs/publishing/push.md) — Publishing and updating all consumers
+- **Installation**
+  - [Install](docs/installation/install.md) — Install command, flows, and bin linking
+  - [Configuration](docs/installation/configuration.md) — devlink.config.mjs reference
+- **Inspection**
+  - [List](docs/inspection/list.md) — Listing packages in the store
+  - [Resolve](docs/inspection/resolve.md) — Debugging package resolution
+  - [Consumers](docs/inspection/consumers.md) — Consumer project tracking
+- **Maintenance**
+  - [Remove](docs/maintenance/remove.md) — Removing packages and namespaces
+  - [Verify](docs/maintenance/verify.md) — Verifying store integrity
+  - [Prune](docs/maintenance/prune.md) — Removing orphaned packages
+
+## Changelog
+
+### Latest: [1.1.0] - 2026-02-25
+
+- Staging flow with `file:` protocol rewriting for `--npm` installs
+- `--path` flag in `resolve` command for debugging resolution paths
+- Bin linking and broken symlink cleanup in `node_modules/.bin/`
+- Hierarchical documentation system with per-section agent guides
+- Release steering guide and changelog tracking
+- Removed `--run-scripts` / `--ignore-scripts` flags
+
+📄 [Full Changelog](CHANGELOG.md)
 
 ## Feedback
 

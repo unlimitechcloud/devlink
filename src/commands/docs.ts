@@ -26,13 +26,6 @@ export function getDocsPath(): string {
 }
 
 /**
- * Get the AGENTS.md path
- */
-export function getAgentsPath(): string {
-  return path.resolve(__dirname, "../../AGENTS.md");
-}
-
-/**
  * Normalize a path for comparison (lowercase, no .md extension)
  */
 export function normalizePath(p: string): string {
@@ -42,7 +35,7 @@ export function normalizePath(p: string): string {
 /**
  * Build documentation tree from filesystem
  */
-export function buildDocTree(dirPath: string, relativePath: string = ""): DocEntry[] {
+export function buildDocTree(dirPath: string, relativePath: string = "", isRoot: boolean = true): DocEntry[] {
   const entries: DocEntry[] = [];
   
   try {
@@ -59,9 +52,11 @@ export function buildDocTree(dirPath: string, relativePath: string = ""): DocEnt
           name: item.name,
           path: relPath,
           type: "directory",
-          children: buildDocTree(itemPath, relPath),
+          children: buildDocTree(itemPath, relPath, false),
         });
-      } else if (item.name.endsWith(".md")) {
+      } else if (!isRoot && item.name.endsWith(".md") && item.name !== "AGENTS.md") {
+        // Regular docs — exclude AGENTS.md (injected as virtual entry)
+        // At root level, skip loose files (only section directories are shown)
         entries.push({
           name: item.name.replace(/\.md$/, ""),
           path: relPath.replace(/\.md$/, ""),
@@ -137,7 +132,7 @@ export function formatTree(entries: DocEntry[], prefix: string = ""): string {
         lines.push(formatTree(entry.children, prefix + childPrefix));
       }
     } else {
-      lines.push(`${prefix}${connector}${entry.name}`);
+      lines.push(`${prefix}${connector}${entry.name}.md`);
     }
   }
   
@@ -155,7 +150,7 @@ export function formatDirectoryListing(entry: DocEntry): string {
     lines.push("Documents:");
     for (const child of entry.children) {
       if (child.type === "file") {
-        lines.push(`  ${child.name}`);
+        lines.push(`  ${child.name}.md`);
       } else {
         lines.push(`  ${child.name}/`);
       }
@@ -184,14 +179,43 @@ export function readDocument(docPath: string, docsDir?: string): string | null {
 }
 
 /**
- * Read AGENTS.md
+ * Read AGENTS.md from a docs subdirectory.
+ * E.g., "store" → docs/store/AGENTS.md
+ *        "" → docs/AGENTS.md (root)
  */
-export function readAgents(agentsPath?: string): string | null {
-  const filePath = agentsPath || getAgentsPath();
+export function readAgentsAt(dirPath: string, docsDir?: string): string | null {
+  const dir = docsDir || getDocsPath();
+  const fullPath = dirPath
+    ? path.join(dir, dirPath, "AGENTS.md")
+    : path.join(dir, "AGENTS.md");
   try {
-    return fs.readFileSync(filePath, "utf-8");
+    return fs.readFileSync(fullPath, "utf-8");
   } catch {
     return null;
+  }
+}
+
+/**
+ * Inject virtual "agents" entries into directories that have an AGENTS.md file.
+ */
+export function injectAgentsEntries(tree: DocEntry[], docsPath: string): void {
+  for (const entry of tree) {
+    if (entry.type !== "directory" || !entry.children) continue;
+
+    // Check if this directory has an AGENTS.md
+    const agentsFile = path.join(docsPath, entry.path, "AGENTS.md");
+    if (fs.existsSync(agentsFile)) {
+      if (!entry.children.some((c) => c.name === "agents")) {
+        entry.children.unshift({
+          name: "agents",
+          path: `${entry.path}/agents`,
+          type: "file",
+        });
+      }
+    }
+
+    // Recurse into subdirectories
+    injectAgentsEntries(entry.children, docsPath);
   }
 }
 
@@ -199,30 +223,34 @@ export function readAgents(agentsPath?: string): string | null {
  * Main docs command handler
  */
 export async function handleDocs(args: { document?: string }): Promise<void> {
-  const docsDir = getDocsPath();
-  const tree = buildDocTree(docsDir);
-  
-  // Add AGENTS.md as a special top-level entry
-  const fullTree: DocEntry[] = [
-    { name: "agents", path: "agents", type: "file" },
-    ...tree,
-  ];
-  
+  const docsPath = getDocsPath();
+  const tree = buildDocTree(docsPath);
+  injectAgentsEntries(tree, docsPath);
+
+  // Check if root docs/AGENTS.md exists → inject top-level agents entry
+  const rootAgentsPath = path.join(docsPath, "AGENTS.md");
+  const hasRootAgents = fs.existsSync(rootAgentsPath);
+
   // No argument: show full tree
   if (!args.document) {
+    // Build display tree with agents at top if available
+    const displayTree: DocEntry[] = hasRootAgents
+      ? [{ name: "agents", path: "agents", type: "file" }, ...tree]
+      : tree;
+
     console.log(`
 📚 DevLink Documentation
 
-${formatTree(fullTree)}
+${formatTree(displayTree)}
 
 Usage:
-  devlink docs <document>       Show document content
-  devlink docs <directory>      List documents in directory
+  devlink docs <document>              Show document content
+  devlink docs <directory>             List documents in directory
 
 Examples:
-  devlink docs agents           AI agent guide (comprehensive)
-  devlink docs store            List store documents
-  devlink docs store/namespaces Show namespaces documentation
+  devlink docs agents.md               Agent guide (root)
+  devlink docs store                   List store documents
+  devlink docs store/namespaces.md     Show namespaces documentation
 `);
     return;
   }
@@ -230,25 +258,39 @@ Examples:
   const searchPath = args.document;
   const normalizedSearch = normalizePath(searchPath);
   
-  // Special case: agents
+  // Top-level aliases: "agents" → root docs/AGENTS.md
   if (normalizedSearch === "agents" || normalizedSearch === "agent" || normalizedSearch === "ai") {
-    const content = readAgents();
+    const content = readAgentsAt("");
     if (content) {
       console.log(content);
       return;
     }
-    console.error("Error: AGENTS.md not found");
+    console.error("Error: docs/AGENTS.md not found");
     process.exit(1);
+  }
+
+  // Check if path ends with "/agents" → read AGENTS.md from that directory
+  if (normalizedSearch.endsWith("/agents")) {
+    const dirPath = normalizedSearch.replace(/\/agents$/, "");
+    const content = readAgentsAt(dirPath);
+    if (content) {
+      console.log(content);
+      return;
+    }
+    // Fall through to tree search
   }
   
   // Search in tree
   const result = findDocument(tree, searchPath);
   
   if (!result) {
+    const displayTree: DocEntry[] = hasRootAgents
+      ? [{ name: "agents", path: "agents", type: "file" }, ...tree]
+      : tree;
     console.error(`Document not found: ${searchPath}`);
     console.error("");
     console.error("Available documents:");
-    console.error(formatTree(fullTree));
+    console.error(formatTree(displayTree));
     process.exit(1);
   }
   
@@ -258,6 +300,16 @@ Examples:
     // Show directory listing
     console.log(formatDirectoryListing(entry));
     return;
+  }
+
+  // For "agents" entries in the tree, read from AGENTS.md in parent dir
+  if (entry.name === "agents") {
+    const dirPath = fullPath.replace(/\/agents$/, "");
+    const content = readAgentsAt(dirPath);
+    if (content) {
+      console.log(content);
+      return;
+    }
   }
   
   // Read and display file
@@ -290,12 +342,12 @@ ARGUMENTS
   [document]    Document or directory path (case insensitive, .md optional)
 
 EXAMPLES
-  devlink docs                    Show documentation tree
-  devlink docs agents             AI agent guide (comprehensive)
-  devlink docs store              List store documents
-  devlink docs store/namespaces   Show namespaces documentation
-  devlink docs STORE/NAMESPACES   Same (case insensitive)
-  devlink docs publishing/push    Show push command documentation
+  devlink docs                         Show documentation tree
+  devlink docs agents.md               AI agent guide (comprehensive)
+  devlink docs store                   List store documents
+  devlink docs store/namespaces.md     Show namespaces documentation
+  devlink docs STORE/NAMESPACES        Same (case insensitive, .md optional)
+  devlink docs publishing/push.md      Show push command documentation
 
 SPECIAL DOCUMENTS
   agents    Complete self-contained guide for AI agents

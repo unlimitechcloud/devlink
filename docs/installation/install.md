@@ -18,7 +18,6 @@ devlink install [options]
 | `--prod` | Force prod mode |
 | `--repo <path>` | Use custom repo path |
 | `--npm` | Run `npm install` before DevLink installs packages |
-| `--run-scripts` | Allow npm scripts to run (by default npm runs with `--ignore-scripts`) |
 
 ## Description
 
@@ -27,9 +26,10 @@ The `install` command:
 1. Reads `devlink.config.mjs` from the project
 2. Determines the mode (dev or prod)
 3. Resolves packages using namespace precedence
-4. Creates symlinks in `node_modules`
-5. Registers the project as a consumer
-6. Creates/updates `devlink.lock`
+4. Copies packages to `node_modules` (or stages them for `--npm` flow)
+5. Cleans broken bin symlinks and links new bin entries into `node_modules/.bin/`
+6. Registers the project as a consumer
+7. Creates/updates `devlink.lock`
 
 ## Configuration File
 
@@ -94,9 +94,6 @@ devlink install -c ./config/devlink.config.mjs
 ```bash
 # Run npm install first, then DevLink
 devlink install --dev --npm
-
-# Allow npm scripts to run
-devlink install --dev --npm --run-scripts
 ```
 
 ## Resolution Process
@@ -200,14 +197,8 @@ devlink install --dev --npm
 ```
 
 **Execution order:**
-1. `npm install --ignore-scripts` runs first
+1. `npm install` runs first
 2. DevLink installs packages from the store
-
-By default, npm runs with `--ignore-scripts` to prevent infinite loops (e.g., if you have a `postinstall` script that calls DevLink). Use `--run-scripts` to allow npm scripts:
-
-```bash
-devlink install --dev --npm --run-scripts
-```
 
 ### Replacing npm install with DevLink
 
@@ -243,6 +234,51 @@ This pattern:
 ### Why This Order Matters
 
 When npm runs, it may prune packages from `node_modules` that aren't in `package.json`. By running npm first and DevLink second, DevLink packages are installed after npm's pruning, ensuring they remain in place.
+
+## Staging Flow (--npm)
+
+When `--npm` is used, DevLink uses a staging mechanism instead of direct copy:
+
+1. Resolves all packages from the store
+2. Copies them to a local `.devlink/` staging directory inside the project
+3. Rewrites internal dependencies between staged packages to `file:` relative paths (using semver matching)
+4. Temporarily injects staged packages as `file:` dependencies in `package.json`
+5. Runs `npm install` (which resolves both npm and staged packages)
+6. Restores original `package.json` (always, even on error/signal)
+7. Cleans broken bin symlinks and links bin entries for DevLink packages
+8. Updates lockfile and installations tracking
+
+The staging directory (`.devlink/`) is cleaned and recreated on each install.
+
+## Bin Linking
+
+When packages define a `bin` field in their `package.json`, DevLink automatically creates symlinks in `node_modules/.bin/` — just like npm would. This ensures CLI tools provided by DevLink packages are available via `npx` or npm scripts.
+
+Before linking, DevLink cleans up any broken symlinks in `.bin/` left over from previously installed packages that no longer exist.
+
+## Lifecycle Hooks
+
+ModeConfig supports lifecycle hooks for custom logic during installation:
+
+```javascript
+dev: (ctx) => ({
+  manager: "store",
+  namespaces: ["global"],
+  beforeAll: async () => { /* runs once before any package is installed */ },
+  afterAll: async () => { /* runs once after all packages are installed */ },
+  beforeEach: async (pkg) => { /* runs before each package install */ },
+  afterEach: async (pkg) => { /* runs after each package install */ },
+})
+```
+
+| Hook | Signature | When |
+|------|-----------|------|
+| `beforeAll` | `() => void` | Before any package is installed |
+| `afterAll` | `() => void` | After all packages are installed |
+| `beforeEach` | `(pkg: ResolvedPackage) => void` | Before each package (direct copy mode only) |
+| `afterEach` | `(pkg: ResolvedPackage) => void` | After each package (direct copy mode only) |
+
+Note: `beforeEach`/`afterEach` are only called in direct copy mode (without `--npm`). The staging flow calls `beforeAll`/`afterAll` only.
 
 ## See Also
 

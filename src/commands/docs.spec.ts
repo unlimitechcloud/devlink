@@ -14,7 +14,8 @@ import {
   formatTree,
   formatDirectoryListing,
   readDocument,
-  readAgents,
+  readAgentsAt,
+  injectAgentsEntries,
 } from "./docs.js";
 
 const TEST_DOCS_PATH = path.join(os.tmpdir(), "devlink-docs-test-" + Date.now());
@@ -186,7 +187,7 @@ describe("Docs Command", () => {
       const output = formatTree(entries);
       
       expect(output).toContain("├── dir/");
-      expect(output).toContain("└── file");
+      expect(output).toContain("└── file.md");
     });
 
     it("should format nested directories", () => {
@@ -204,7 +205,7 @@ describe("Docs Command", () => {
       const output = formatTree(entries);
       
       expect(output).toContain("└── parent/");
-      expect(output).toContain("└── child");
+      expect(output).toContain("└── child.md");
     });
 
     it("should handle empty array", () => {
@@ -229,8 +230,8 @@ describe("Docs Command", () => {
       
       expect(output).toContain("📁 store/");
       expect(output).toContain("Documents:");
-      expect(output).toContain("structure");
-      expect(output).toContain("namespaces");
+      expect(output).toContain("structure.md");
+      expect(output).toContain("namespaces.md");
       expect(output).toContain("Usage: devlink docs store/<document>");
     });
 
@@ -278,18 +279,28 @@ describe("Docs Command", () => {
     });
   });
 
-  describe("readAgents", () => {
-    it("should read AGENTS.md content", () => {
-      const agentsPath = path.join(TEST_DOCS_PATH, "AGENTS.md");
-      const content = readAgents(agentsPath);
-      
+  describe("readAgentsAt", () => {
+    it("should read root AGENTS.md content", () => {
+      const content = readAgentsAt("", TEST_DOCS_PATH);
+
       expect(content).not.toBeNull();
       expect(content).toContain("# Agent Guide");
     });
 
-    it("should return null for non-existent file", () => {
-      const content = readAgents("/nonexistent/AGENTS.md");
-      
+    it("should read section AGENTS.md content", async () => {
+      await fs.writeFile(
+        path.join(TEST_DOCS_PATH, "store", "AGENTS.md"),
+        "# Store Agent Guide"
+      );
+      const content = readAgentsAt("store", TEST_DOCS_PATH);
+
+      expect(content).not.toBeNull();
+      expect(content).toContain("# Store Agent Guide");
+    });
+
+    it("should return null for non-existent directory", () => {
+      const content = readAgentsAt("nonexistent", TEST_DOCS_PATH);
+
       expect(content).toBeNull();
     });
   });

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-02-25
+
+### Added
+- Staging flow with `file:` protocol rewriting for `--npm` installs
+- `--path` flag in `resolve` command for debugging resolution paths
+- Bin linking: DevLink now creates symlinks in `node_modules/.bin/` for packages with `bin` entries
+- Broken symlink cleanup: automatically removes orphaned symlinks from `node_modules/.bin/` before linking
+- Hierarchical documentation system with per-section `agents.md` guides
+- `docs` command supports `.md` extensions and root file filtering
+- Full documentation index with links in README
+- Changelog section in README with latest release summary
+- Release steering guide (`.kiro/steering/release.md`)
+
+### Changed
+- `AGENTS.md` (root) is now a concise development guide; `docs/AGENTS.md` is the comprehensive agent guide
+- Documentation restructured into sections: store, publishing, installation, inspection, maintenance
+- Install command refactored for staging flow support
+
+### Removed
+- `--run-scripts` and `--ignore-scripts` flags (no longer needed)
+- `docs/README.md` (replaced by `docs/AGENTS.md` and CLI docs)
+- `RELEASE.md` (moved to `.kiro/steering/release.md`)
+
 ## [1.0.5] - 2026-02-17
 
 ### Fixed
