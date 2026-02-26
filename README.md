@@ -56,7 +56,7 @@ export default {
 
 ```bash
 cd my-project
-devlink install --dev
+devlink install --dev --npm
 ```
 
 DevLink copies the packages from the store to your `node_modules`.
@@ -78,7 +78,7 @@ This publishes the new version AND automatically updates all consumer projects.
 |---------|-------------|----------------|
 | `publish` | Publish package to the store | `-n, --namespace` |
 | `push` | Publish and update all consumers | `-n, --namespace` |
-| `install` | Install packages from store | `--dev`, `--prod`, `-n` |
+| `install` | Install packages from store/registry | `-m, --mode`, `--dev`, `--npm` |
 | `list` | List packages in store | `-n`, `-p`, `--flat` |
 | `resolve` | Debug package resolution | `-n, --namespaces` |
 | `consumers` | List/manage consumer projects | `--prune` |
@@ -110,14 +110,14 @@ devlink push -n feature-v2         # Push to specific namespace
 
 #### `devlink install`
 
-Installs packages from the store based on your `devlink.config.mjs`.
+Installs packages from the store or registry based on your `devlink.config.mjs`.
 
 ```bash
-devlink install                    # Install using default mode
-devlink install --dev              # Force dev mode
-devlink install --prod             # Force prod mode
-devlink install -n feature,global  # Override namespace precedence
-devlink install --dev --npm        # Run npm install first, then DevLink
+devlink install                        # Install using default/detected mode
+devlink install --mode dev --npm       # Dev mode with npm integration
+devlink install --mode remote --npm    # Remote mode (registry resolution)
+devlink install --dev --npm            # Shorthand for --mode dev
+devlink install -n feature,global      # Override namespace precedence
 ```
 
 #### `devlink list`
@@ -178,26 +178,30 @@ devlink docs store/agents.md       # Store section agent guide
 
 ```javascript
 export default {
-  // Packages to manage
+  // Packages to manage — versions per mode
   packages: {
-    "@myorg/core": { 
-      dev: "1.0.0",      // Version for dev mode
-      prod: "1.0.0"      // Version for prod mode (optional)
-    },
-    "@myorg/utils": { dev: "2.0.0" },
+    "@myorg/core": { dev: "1.0.0", remote: "1.0.0" },
+    "@myorg/utils": { dev: "2.0.0", remote: "1.5.0" },
+    "@myorg/dev-tools": { dev: "1.0.0" },  // dev only — removed in remote mode
   },
   
-  // Dev mode configuration
+  // Dev mode — uses local DevLink store
   dev: () => ({
-    manager: "store",              // Use DevLink store
-    namespaces: ["feature", "global"],  // Namespace precedence
-    peerOptional: ["@myorg/*"],    // Transform to optional peers
+    manager: "store",
+    namespaces: ["feature", "global"],
+    peerOptional: ["@myorg/*"],
   }),
   
-  // Prod mode configuration (optional)
-  prod: () => ({
-    manager: "npm",                // Use npm registry
+  // Remote mode — uses npm registry (e.g. GitHub Packages)
+  remote: () => ({
+    manager: "npm",
   }),
+
+  // Auto-detect mode when no --mode flag is provided
+  detectMode: (ctx) => {
+    if (ctx.env.NODE_ENV === "development") return "dev";
+    return "remote";
+  },
 };
 ```
 
@@ -294,19 +298,14 @@ Replace `npm install` with DevLink during development using npm lifecycle hooks:
 ```json
 {
   "scripts": {
-    "predev:install": "echo '🔧 Preparing development environment...'",
-    "dev:install": "devlink install --dev --npm",
-    "postdev:install": "echo '✅ Development environment ready'"
+    "dev:install": "devlink install --mode dev --npm",
+    "remote:install": "devlink install --mode remote --npm"
   }
 }
 ```
 
-Run `npm run dev:install` to:
-1. Execute preparation tasks (`predev:install`)
-2. Run npm install + DevLink install (`dev:install`)
-3. Execute post-install tasks (`postdev:install`)
-
-This ensures DevLink packages are always installed after npm dependencies, preventing npm from pruning them.
+- `dev:install` — resolves packages from the local DevLink store via staging + `file:` protocol
+- `remote:install` — injects exact versions into `package.json` for npm to resolve from a configured registry (e.g. GitHub Packages)
 
 ## Use with AI Agents
 
@@ -383,14 +382,14 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [1.1.0] - 2026-02-25
+### Latest: [1.2.0] - 2026-02-26
 
-- Staging flow with `file:` protocol rewriting for `--npm` installs
-- `--path` flag in `resolve` command for debugging resolution paths
-- Bin linking and broken symlink cleanup in `node_modules/.bin/`
-- Hierarchical documentation system with per-section agent guides
-- Release steering guide and changelog tracking
-- Removed `--run-scripts` / `--ignore-scripts` flags
+- Dynamic `--mode <name>` flag for custom install modes
+- Registry package injection for `manager: "npm"` (e.g. GitHub Packages)
+- Package removal for mode-specific package sets
+- `detectMode()` config function for automatic mode selection
+- `--dev`/`--prod` kept as backward-compatible shorthands
+- `prod` factory no longer required in configuration
 
 📄 [Full Changelog](CHANGELOG.md)
 

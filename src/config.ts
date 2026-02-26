@@ -8,6 +8,7 @@ import type {
   DevLinkConfig,
   FactoryContext,
   ModeConfig,
+  ModeFactory,
   PackageVersions,
 } from "./types.js";
 
@@ -31,7 +32,7 @@ export function createContext(
 export function detectMode(
   config: DevLinkConfig,
   ctx: FactoryContext
-): "dev" | "prod" {
+): string {
   if (config.detectMode) {
     return config.detectMode(ctx);
   }
@@ -51,7 +52,7 @@ export function detectMode(
 export async function loadConfig(configPath: string): Promise<{
   config: DevLinkConfig;
   ctx: FactoryContext;
-  mode: "dev" | "prod";
+  mode: string;
   modeConfig: ModeConfig;
 }> {
   const absolutePath = path.isAbsolute(configPath)
@@ -75,9 +76,6 @@ export async function loadConfig(configPath: string): Promise<{
   if (typeof config.dev !== "function") {
     throw new Error("Configuration must have a 'dev' factory function");
   }
-  if (typeof config.prod !== "function") {
-    throw new Error("Configuration must have a 'prod' factory function");
-  }
 
   // Crear contexto
   const ctx = createContext(config.packages);
@@ -86,7 +84,10 @@ export async function loadConfig(configPath: string): Promise<{
   const mode = detectMode(config, ctx);
 
   // Obtener configuración del modo
-  const modeFactory = mode === "dev" ? config.dev : config.prod;
+  const modeFactory = config[mode] as ModeFactory | undefined;
+  if (!modeFactory || typeof modeFactory !== "function") {
+    throw new Error(`Mode "${mode}" is not defined in configuration`);
+  }
   const modeConfig = modeFactory(ctx);
 
   return { config, ctx, mode, modeConfig };

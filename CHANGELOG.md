@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-02-26
+
+### Added
+- Dynamic `--mode <name>` flag for custom install modes (replaces hardcoded `--dev`/`--prod`)
+- Registry package injection: `manager: "npm"` injects exact versions into `package.json` for npm to resolve from configured registries (e.g. GitHub Packages)
+- Package removal: packages without a version for the current mode are removed from `package.json` during `--npm` installs
+- `detectMode()` config function for automatic mode selection based on environment
+- Support for unlimited custom modes (e.g. `dev`, `remote`, `staging`, etc.)
+
+### Changed
+- `--dev` and `--prod` are now shorthands for `--mode dev` and `--mode prod`
+- `prod` factory is no longer required in config — any mode name works
+- Mode factories use dynamic lookup (`config[mode]`) instead of hardcoded `config.dev`/`config.prod`
+- `PackageVersions` type accepts arbitrary mode keys (not just `dev`/`prod`)
+- Updated installation documentation for new mode system
+
+### Removed
+- Hard requirement for `prod` factory in configuration
+
 ## [1.1.0] - 2026-02-25
 
 ### Added

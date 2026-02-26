@@ -28,7 +28,7 @@ const colors = {
  */
 export function resolvePackages(
   config: DevLinkConfig,
-  mode: "dev" | "prod",
+  mode: string,
   modeConfig: ModeConfig
 ): ResolvedPackage[] {
   const packages: ResolvedPackage[] = [];
@@ -140,7 +140,7 @@ async function installFromNpm(
 export async function install(
   config: DevLinkConfig,
   ctx: FactoryContext,
-  mode: "dev" | "prod",
+  mode: string,
   modeConfig: ModeConfig
 ): Promise<boolean> {
   const packages = resolvePackages(config, mode, modeConfig);

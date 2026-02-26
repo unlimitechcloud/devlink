@@ -103,13 +103,15 @@ program
   .description("Install packages from the store into a project")
   .option("-c, --config <path>", "Path to config file")
   .option("-n, --namespaces <list>", "Override namespace precedence (comma-separated)", commaSeparated)
-  .option("--dev", "Force dev mode")
-  .option("--prod", "Force prod mode")
+  .option("-m, --mode <name>", "Set install mode (matches config mode name, e.g. dev, remote)")
+  .option("--dev", "Force dev mode (shorthand for --mode=dev)")
+  .option("--prod", "Force prod mode (shorthand for --mode=prod)")
   .option("--npm", "Run npm install before DevLink installs packages")
   .option("--run-scripts", "Allow npm scripts to run (default: scripts disabled)")
   .action(async (opts) => {
     await handleInstall({
       config: opts.config,
+      mode: opts.mode,
       dev: opts.dev,
       prod: opts.prod,
       namespaces: opts.namespaces,

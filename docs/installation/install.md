@@ -12,24 +12,26 @@ devlink install [options]
 
 | Option | Description |
 |--------|-------------|
+| `-m, --mode <name>` | Set install mode (e.g. `dev`, `remote`) |
 | `-n, --namespaces <list>` | Override namespace precedence (comma-separated) |
 | `-c, --config <path>` | Path to config file |
-| `--dev` | Force dev mode |
-| `--prod` | Force prod mode |
+| `--dev` | Force dev mode (shorthand for `--mode dev`) |
+| `--prod` | Force prod mode (shorthand for `--mode prod`) |
 | `--repo <path>` | Use custom repo path |
-| `--npm` | Run `npm install` before DevLink installs packages |
+| `--npm` | Run `npm install` with DevLink package management |
 
 ## Description
 
 The `install` command:
 
 1. Reads `devlink.config.mjs` from the project
-2. Determines the mode (dev or prod)
-3. Resolves packages using namespace precedence
-4. Copies packages to `node_modules` (or stages them for `--npm` flow)
-5. Cleans broken bin symlinks and links new bin entries into `node_modules/.bin/`
-6. Registers the project as a consumer
-7. Creates/updates `devlink.lock`
+2. Determines the mode (via `--mode`, `--dev`/`--prod` shorthands, or `detectMode`)
+3. Resolves packages using namespace precedence (store manager) or injects them for registry resolution (npm manager)
+4. Removes packages that don't have a version for the current mode
+5. Copies packages to `node_modules` (or stages them for `--npm` flow)
+6. Cleans broken bin symlinks and links new bin entries into `node_modules/.bin/`
+7. Registers the project as a consumer
+8. Creates/updates `devlink.lock`
 
 ## Configuration File
 
@@ -38,8 +40,9 @@ Create `devlink.config.mjs` in your project root:
 ```javascript
 export default {
   packages: {
-    "@scope/core": { dev: "1.0.0", prod: "1.0.0" },
-    "@scope/utils": { dev: "2.0.0", prod: "1.5.0" },
+    "@scope/core": { dev: "1.0.0", remote: "1.0.0" },
+    "@scope/utils": { dev: "2.0.0", remote: "1.5.0" },
+    "@scope/dev-tools": { dev: "1.0.0" },  // only in dev mode
   },
 
   dev: () => ({
@@ -47,7 +50,7 @@ export default {
     namespaces: ["feature-v2", "global"],
   }),
 
-  prod: () => ({
+  remote: () => ({
     manager: "npm",
     args: ["--no-save"],
   }),
@@ -55,7 +58,7 @@ export default {
   detectMode: (ctx) => {
     if (ctx.env.NODE_ENV === "development") return "dev";
     if (ctx.args.includes("--dev")) return "dev";
-    return "prod";
+    return "remote";
   },
 };
 ```
@@ -71,10 +74,18 @@ cd my-project
 devlink install
 ```
 
-### Force Dev Mode
+### Specify Mode
 
 ```bash
-devlink install --dev
+devlink install --mode dev
+devlink install --mode remote
+```
+
+### Shorthand Flags
+
+```bash
+devlink install --dev    # same as --mode dev
+devlink install --prod   # same as --mode prod
 ```
 
 ### Override Namespaces
@@ -92,27 +103,62 @@ devlink install -c ./config/devlink.config.mjs
 ### Combined with npm install
 
 ```bash
-# Run npm install first, then DevLink
-devlink install --dev --npm
+# Dev: stage from store + npm install
+devlink install --mode dev --npm
+
+# Remote: inject registry versions + npm install
+devlink install --mode remote --npm
 ```
+
+## Mode System
+
+Modes are defined as top-level factory functions in the config. You can define any number of modes with any name:
+
+```javascript
+export default {
+  packages: { /* ... */ },
+  dev: () => ({ manager: "store", namespaces: ["global"] }),
+  remote: () => ({ manager: "npm" }),
+  staging: () => ({ manager: "npm" }),
+};
+```
+
+The mode is determined by (in priority order):
+1. `--mode <name>` CLI flag
+2. `--dev` / `--prod` shorthand flags
+3. `detectMode()` function in config
+4. Default: `"dev"`
+
+## Package Removal
+
+If a package in the config doesn't have a version for the current mode, it is removed from `package.json` during the `--npm` flow. This allows mode-specific package sets:
+
+```javascript
+packages: {
+  "@scope/core": { dev: "1.0.0", remote: "1.0.0" },     // both modes
+  "@scope/dev-tools": { dev: "1.0.0" },                   // dev only — removed in remote
+}
+```
+
+When running `--mode remote --npm`, `@scope/dev-tools` will be removed from the temporary `package.json` before `npm install` runs.
 
 ## Resolution Process
 
 For each package in the config:
 
-1. Get version for current mode (dev/prod)
-2. Search namespaces in order
-3. Find first match
-4. Create symlink to store location
+1. Get version for current mode
+2. If no version exists for this mode → mark for removal (--npm flow)
+3. If `manager: "store"` → search namespaces in order, find first match
+4. If `manager: "npm"` → inject as exact version for npm to resolve from registry
 
-Example:
+Example (store mode):
 ```
 Config: @scope/core@1.0.0
 Namespaces: ["feature-v2", "global"]
 
 1. Search feature-v2/@scope/core/1.0.0 → Not found
 2. Search global/@scope/core/1.0.0 → Found!
-3. Symlink: node_modules/@scope/core → ~/.devlink/namespaces/global/@scope/core/1.0.0
+3. Copy to node_modules/@scope/core
 ```
 
 ## Lock File
@@ -125,8 +171,7 @@ After installation, `devlink.lock` is created/updated:
     "@scope/core": {
       "version": "1.0.0",
       "namespace": "global",
-      "signature": "6761ca1f...",
-      "resolved": "~/.devlink/namespaces/global/@scope/core/1.0.0"
+      "signature": "6761ca1f..."
     }
   }
 }
@@ -144,11 +189,11 @@ Installing registers your project in `installations.json`, enabling:
 - `devlink push` to update your project
 - `devlink consumers` to list your project
 
-## Modes
+## Manager Types
 
-### Dev Mode
+### store
 
-Uses packages from the DevLink store:
+Uses the DevLink store to resolve packages. Packages are copied from the local store to `node_modules`.
 
 ```javascript
 dev: () => ({
@@ -157,12 +202,12 @@ dev: () => ({
 })
 ```
 
-### Prod Mode
+### npm
 
-Uses npm to install packages:
+Packages are resolved by npm from the configured registry (e.g. GitHub Packages, npmjs.org). When used with `--npm`, DevLink injects the packages as exact versions into a temporary `package.json` so npm can resolve them.
 
 ```javascript
-prod: () => ({
+remote: () => ({
   manager: "npm",
   args: ["--no-save"],
 })
@@ -186,58 +231,48 @@ Error: devlink.config.mjs not found
 
 Create a configuration file in your project root.
 
+### Mode Not Defined
+
+```
+Error: Mode "staging" is not defined in devlink.config.mjs
+```
+
+The mode specified via `--mode` doesn't have a corresponding factory function in the config.
+
 ## npm Integration
 
 ### Using --npm Flag
 
-The `--npm` flag runs `npm install` before DevLink installs packages. This is useful when you want a single command to handle both npm dependencies and DevLink packages.
+The `--npm` flag enables DevLink's npm integration. Behavior depends on the manager type:
 
-```bash
-devlink install --dev --npm
-```
+**Store manager (`manager: "store"`):**
+1. Resolves packages from the DevLink store
+2. Stages them to `.devlink/` with internal deps rewritten as `file:` paths
+3. Injects staged packages as `file:` dependencies in a temporary `package.json`
+4. Removes packages not in the current mode
+5. Runs `npm install`
+6. Restores original `package.json`
 
-**Execution order:**
-1. `npm install` runs first
-2. DevLink installs packages from the store
+**npm manager (`manager: "npm"`):**
+1. Injects packages as exact versions in a temporary `package.json`
+2. Removes packages not in the current mode
+3. Runs `npm install` (npm resolves from configured registry)
+4. Restores original `package.json`
 
-### Replacing npm install with DevLink
+### Recommended package.json Scripts
 
-A recommended pattern is to use DevLink as your default install command during development. This ensures DevLink packages are always installed after npm dependencies.
-
-**package.json:**
 ```json
 {
   "scripts": {
-    "predev:install": "echo '🔧 Preparing development environment...'",
-    "dev:install": "devlink install --dev --npm",
-    "postdev:install": "echo '✅ Development environment ready'"
+    "dev:install": "devlink install --mode dev --npm",
+    "remote:install": "devlink install --mode remote --npm"
   }
 }
 ```
 
-**Usage:**
-```bash
-npm run dev:install
-```
+## Staging Flow (--npm with store manager)
 
-**Execution flow:**
-1. `predev:install` - Runs before (preparation tasks)
-2. `dev:install` - Runs npm install + DevLink install
-3. `postdev:install` - Runs after (verification, notifications)
-
-This pattern:
-- Provides a single command for complete development setup
-- Uses npm lifecycle hooks (`pre` and `post` scripts)
-- Allows custom logic before and after installation
-- Prevents npm from pruning DevLink packages (since DevLink runs after npm)
-
-### Why This Order Matters
-
-When npm runs, it may prune packages from `node_modules` that aren't in `package.json`. By running npm first and DevLink second, DevLink packages are installed after npm's pruning, ensuring they remain in place.
-
-## Staging Flow (--npm)
-
-When `--npm` is used, DevLink uses a staging mechanism instead of direct copy:
+When `--npm` is used with `manager: "store"`, DevLink uses a staging mechanism:
 
 1. Resolves all packages from the store
 2. Copies them to a local `.devlink/` staging directory inside the project

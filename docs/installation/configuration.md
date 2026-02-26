@@ -10,7 +10,7 @@ Create `devlink.config.mjs` in your project root:
 export default {
   packages: { /* ... */ },
   dev: () => ({ /* ... */ }),
-  prod: () => ({ /* ... */ }),
+  remote: () => ({ /* ... */ }),
   detectMode: (ctx) => { /* ... */ },
 };
 ```
@@ -26,64 +26,67 @@ In order of priority:
 
 ### packages
 
-Defines which packages to manage and their versions per mode.
+Defines which packages to manage and their versions per mode. Each key is a package name, and the value is an object mapping mode names to version strings.
 
 ```javascript
 packages: {
-  "@scope/core": { dev: "1.0.0", prod: "1.0.0" },
-  "@scope/utils": { dev: "2.0.0", prod: "1.5.0" },
-  "simple-pkg": { dev: "1.0.0" },  // prod defaults to dev version
+  "@scope/core": { dev: "1.0.0", remote: "1.0.0" },
+  "@scope/utils": { dev: "2.0.0", remote: "1.5.0" },
+  "@scope/dev-tools": { dev: "1.0.0" },  // only available in dev mode
 }
 ```
 
-### dev
+If a package doesn't have a version for the current mode, it will be removed from `package.json` during `--npm` installs, or skipped during direct copy installs.
 
-Configuration for development mode.
+### Mode Factories
+
+Modes are defined as top-level properties in the config. Each mode is a factory function that returns a `ModeConfig` object. You can define any number of modes with any name.
 
 ```javascript
+// Development mode — uses local DevLink store
 dev: (ctx) => ({
-  manager: "store",           // Use DevLink store
-  namespaces: ["feature", "global"],  // Namespace precedence
-})
+  manager: "store",
+  namespaces: ["feature", "global"],
+}),
+
+// Remote mode — uses npm registry (e.g. GitHub Packages)
+remote: (ctx) => ({
+  manager: "npm",
+  args: ["--no-save"],
+}),
 ```
 
-### prod
-
-Configuration for production mode.
-
-```javascript
-prod: (ctx) => ({
-  manager: "npm",             // Use npm
-  args: ["--no-save"],        // Additional npm arguments
-})
-```
+Reserved property names (cannot be used as mode names): `packages`, `detectMode`.
 
 ### detectMode
 
-Function to determine which mode to use.
+Optional function to automatically determine which mode to use when no `--mode` flag is provided.
 
 ```javascript
 detectMode: (ctx) => {
   // ctx.env - Environment variables
-  // ctx.args - Command line arguments
+  // ctx.args - Command line arguments (process.argv)
   // ctx.cwd - Current working directory
+  // ctx.packages - The packages config object
   
   if (ctx.env.NODE_ENV === "development") return "dev";
   if (ctx.env.SST_LOCAL === "true") return "dev";
-  if (ctx.args.includes("--dev")) return "dev";
-  return "prod";
+  return "remote";
 }
 ```
 
+If `detectMode` is not defined and no `--mode` flag is provided, defaults to `"dev"`.
+
 ## Context Object
 
-The `ctx` object passed to functions contains:
+The `ctx` object passed to factory functions and `detectMode`:
 
 ```typescript
-interface Context {
-  env: Record<string, string>;  // process.env
-  args: string[];               // Command line arguments
-  cwd: string;                  // Current working directory
+interface FactoryContext {
+  env: Record<string, string>;                    // process.env
+  args: string[];                                  // process.argv
+  cwd: string;                                     // Current working directory
+  packages: Record<string, PackageVersions>;       // The packages config
 }
 ```
 
@@ -97,74 +100,12 @@ Uses the DevLink store to resolve packages:
 {
   manager: "store",
   namespaces: ["feature-v2", "global"],
-  peerOptional: ["@myorg/*"],  // Mark matching deps as optional peers
 }
 ```
-
-#### peerOptional
-
-When DevLink copies packages from the store to `node_modules`, it can automatically transform dependencies to optional peer dependencies. This prevents npm from trying to resolve them from the registry.
-
-```javascript
-dev: (ctx) => ({
-  manager: "store",
-  peerOptional: ["@myorg/*"],  // Glob patterns for packages to transform
-})
-```
-
-**How it works:**
-
-1. DevLink copies the package from the store to `node_modules`
-2. For each dependency that matches a `peerOptional` pattern:
-   - Moves it from `dependencies` to `peerDependencies`
-   - Adds `peerDependenciesMeta` with `optional: true`
-3. npm sees these as optional and doesn't try to resolve them from the registry
-
-**Supported patterns:**
-
-| Pattern | Matches |
-|---------|---------|
-| `@scope/*` | All packages in scope (e.g., `@myorg/core`, `@myorg/utils`) |
-| `@scope/pkg` | Exact package name |
-| `*` | All packages |
-
-**Example transformation:**
-
-Original `package.json` in store:
-```json
-{
-  "dependencies": {
-    "@myorg/core": "1.0.0",
-    "@myorg/utils": "1.0.0",
-    "lodash": "4.17.0"
-  }
-}
-```
-
-After DevLink copies with `peerOptional: ["@myorg/*"]`:
-```json
-{
-  "dependencies": {
-    "lodash": "4.17.0"
-  },
-  "peerDependencies": {
-    "@myorg/core": "1.0.0",
-    "@myorg/utils": "1.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@myorg/core": { "optional": true },
-    "@myorg/utils": { "optional": true }
-  }
-}
-```
-
-**Important:** The original package in the store is never modified. Only the copy in `node_modules` is transformed.
-
-**Use case:** When developing a monorepo where packages depend on each other, but those packages aren't published to npm yet. Without `peerOptional`, npm would fail trying to resolve the internal dependencies from the registry.
 
 ### npm
 
-Uses npm to install packages:
+Packages are resolved by npm from the configured registry. When used with `--npm`, DevLink injects packages as exact versions into a temporary `package.json`.
 
 ```javascript
 {
@@ -176,60 +117,54 @@ Uses npm to install packages:
 ## Complete Example
 
 ```javascript
-import { fileURLToPath } from "url";
-import { dirname } from "path";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 export default {
-  // Packages to manage
+  // Packages to manage — versions per mode
   packages: {
-    "@myorg/core": { dev: "1.0.0", prod: "1.0.0" },
-    "@myorg/utils": { dev: "1.0.0", prod: "1.0.0" },
-    "@myorg/http": { dev: "1.0.0", prod: "1.0.0" },
+    "@myorg/core": { dev: "1.0.0", remote: "1.0.0" },
+    "@myorg/utils": { dev: "1.0.0", remote: "1.0.0" },
+    "@myorg/http": { dev: "1.0.0", remote: "1.0.0" },
+    "@myorg/dev-tools": { dev: "1.0.0" },  // dev only
   },
 
   // Development mode: use local store
-  dev: (ctx) => ({
+  dev: () => ({
     manager: "store",
-    namespaces: getNamespaces(ctx),
-    // Mark @myorg packages as optional peers so npm doesn't
-    // try to resolve them from the registry
-    peerOptional: ["@myorg/*"],
+    namespaces: ["global"],
   }),
 
-  // Production mode: use npm (no peerOptional needed)
-  prod: (ctx) => ({
+  // Remote mode: use npm registry (GitHub Packages, etc.)
+  remote: () => ({
     manager: "npm",
-    args: ["--no-save"],
   }),
 
   // Mode detection
   detectMode: (ctx) => {
-    // SST local development
     if (ctx.env.SST_LOCAL === "true") return "dev";
-    
-    // Explicit flags
-    if (ctx.args.includes("--dev")) return "dev";
-    if (ctx.args.includes("--prod")) return "prod";
-    
-    // Environment variable
     if (ctx.env.NODE_ENV === "development") return "dev";
-    
-    return "prod";
+    return "remote";
   },
 };
+```
 
-// Helper to determine namespaces based on context
-function getNamespaces(ctx) {
-  // Use feature namespace if specified
-  if (ctx.env.DEVLINK_NAMESPACE) {
-    return [ctx.env.DEVLINK_NAMESPACE, "global"];
-  }
-  
-  // Default to global only
-  return ["global"];
-}
+## Mode Selection
+
+The mode is determined by (in priority order):
+
+1. `--mode <name>` CLI flag
+2. `--dev` shorthand (equivalent to `--mode dev`)
+3. `--prod` shorthand (equivalent to `--mode prod`)
+4. `detectMode()` function in config
+5. Default: `"dev"`
+
+```bash
+# Explicit mode
+devlink install --mode remote --npm
+
+# Shorthand
+devlink install --dev --npm
+
+# Auto-detect via detectMode()
+devlink install --npm
 ```
 
 ## Namespace Override
@@ -242,21 +177,6 @@ devlink install
 
 # Overrides to use feature-v2 first
 devlink install -n feature-v2,global
-```
-
-## Mode Override
-
-The `--dev` and `--prod` flags override mode detection:
-
-```bash
-# Uses detectMode function
-devlink install
-
-# Forces dev mode
-devlink install --dev
-
-# Forces prod mode
-devlink install --prod
 ```
 
 ## Tips
@@ -280,20 +200,32 @@ Pin exact versions for reproducibility:
 
 ```javascript
 packages: {
-  "@scope/core": { dev: "1.2.3", prod: "1.2.3" },
+  "@scope/core": { dev: "1.2.3", remote: "1.2.3" },
 }
 ```
 
-### Different Dev/Prod Versions
+### Different Versions Per Mode
 
-Use different versions for development and production:
+Use different versions for development and remote:
 
 ```javascript
 packages: {
   "@scope/core": { 
     dev: "2.0.0-beta.1",  // Latest beta for development
-    prod: "1.5.0",         // Stable for production
+    remote: "1.5.0",       // Stable for remote/CI
   },
+}
+```
+
+### Mode-Specific Package Sets
+
+Packages without a version for a mode are removed during `--npm` installs:
+
+```javascript
+packages: {
+  "@scope/core": { dev: "1.0.0", remote: "1.0.0" },     // both modes
+  "@scope/dev-tools": { dev: "1.0.0" },                   // dev only
+  "@scope/ci-tools": { remote: "1.0.0" },                 // remote only
 }
 ```
 

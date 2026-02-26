@@ -135,6 +135,7 @@ export interface FactoryContext {
 export interface PackageVersions {
   dev?: string;
   prod?: string;
+  [mode: string]: string | undefined;
 }
 
 /**
@@ -171,12 +172,14 @@ export type ModeFactory = (ctx: FactoryContext) => ModeConfig;
 
 /**
  * Configuración completa del archivo devlink.config.mjs
+ * 
+ * Mode factories are defined as top-level properties (e.g. dev, remote, prod).
+ * The `packages` and `detectMode` properties are reserved.
  */
 export interface DevLinkConfig {
   packages: Record<string, PackageVersions>;
-  dev: ModeFactory;
-  prod: ModeFactory;
-  detectMode?: (ctx: FactoryContext) => "dev" | "prod";
+  detectMode?: (ctx: FactoryContext) => string;
+  [key: string]: any;
 }
 
 // ============================================================================

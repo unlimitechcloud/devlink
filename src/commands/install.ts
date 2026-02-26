@@ -5,7 +5,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { spawn } from "child_process";
-import type { DevLinkConfig, ModeConfig, ResolvedPackage, Lockfile, InstalledPackage } from "../types.js";
+import type { DevLinkConfig, ModeConfig, ModeFactory, ResolvedPackage, Lockfile, InstalledPackage } from "../types.js";
 import { withStoreLock } from "../core/lock.js";
 import { readRegistry } from "../core/registry.js";
 import { readInstallations, writeInstallations, registerProject } from "../core/installations.js";
@@ -201,7 +201,7 @@ async function writeLockfile(projectPath: string, lockfile: Lockfile): Promise<v
 
 export interface InstallOptions {
   config?: string;
-  mode?: "dev" | "prod";
+  mode?: string;
   namespaces?: string[];
   runNpm?: boolean;
   runScripts?: boolean;
@@ -209,6 +209,7 @@ export interface InstallOptions {
 
 export interface InstallResult {
   installed: ResolvedPackage[];
+  removed: string[];
   skipped: { name: string; version: string; reason: string }[];
   npmExitCode?: number;
 }
@@ -260,12 +261,14 @@ async function restorePackageJson(backup: PackageJsonBackup): Promise<void> {
 }
 
 /**
- * Inject staged packages as file: dependencies in the project's package.json.
- * Uses relative paths from the project to .devlink/.
+ * Inject staged packages as file: dependencies, registry packages as exact versions,
+ * and remove excluded packages from the project's package.json.
  */
 async function injectStagedPackages(
   projectPath: string,
-  stagedPackages: StagedPackage[]
+  stagedPackages: StagedPackage[],
+  removePackageNames: string[] = [],
+  registryPackages: { name: string; version: string }[] = []
 ): Promise<PackageJsonBackup> {
   const packageJsonPath = path.join(projectPath, "package.json");
   const originalContent = await fs.readFile(packageJsonPath, "utf-8");
@@ -274,10 +277,21 @@ async function injectStagedPackages(
   const manifest = JSON.parse(originalContent);
   manifest.dependencies = manifest.dependencies || {};
 
+  // Inject store packages as file: protocol
   for (const pkg of stagedPackages) {
-    // Relative path from project to .devlink/{name}/{version}
     const relativePath = path.relative(projectPath, pkg.stagingPath);
     manifest.dependencies[pkg.name] = `file:${relativePath}`;
+  }
+
+  // Inject registry packages as exact versions (npm resolves from configured registry)
+  for (const pkg of registryPackages) {
+    manifest.dependencies[pkg.name] = pkg.version;
+  }
+
+  // Remove packages that don't have a version for the current mode
+  for (const pkgName of removePackageNames) {
+    delete manifest.dependencies[pkgName];
+    if (manifest.devDependencies) delete manifest.devDependencies[pkgName];
   }
 
   await fs.writeFile(packageJsonPath, JSON.stringify(manifest, null, 2) + "\n");
@@ -292,7 +306,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   const config = await loadConfig(options.config);
   
   // Determine mode
-  let mode: "dev" | "prod" = options.mode || "dev";
+  let mode: string = options.mode || "dev";
   if (!options.mode && config.detectMode) {
     const ctx = {
       env: process.env,
@@ -303,19 +317,23 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     mode = config.detectMode(ctx);
   }
   
-  // Get mode config
+  // Get mode config (look up factory by mode name)
   const ctx = {
     env: process.env,
     args: process.argv,
     cwd: projectPath,
     packages: config.packages,
   };
-  const modeConfig: ModeConfig = mode === "dev" ? config.dev(ctx) : config.prod(ctx);
+  const modeFactory = config[mode] as ModeFactory | undefined;
+  if (!modeFactory || typeof modeFactory !== "function") {
+    throw new Error(`Mode "${mode}" is not defined in devlink.config.mjs`);
+  }
+  const modeConfig: ModeConfig = modeFactory(ctx);
   
-  // If using npm manager, skip store installation
-  if (modeConfig.manager === "npm") {
+  // If using npm manager and --npm flag is NOT set, skip entirely
+  if (modeConfig.manager === "npm" && !options.runNpm) {
     console.log("Using npm manager, skipping store installation");
-    return { installed: [], skipped: [] };
+    return { installed: [], removed: [], skipped: [] };
   }
   
   // Determine namespaces to search
@@ -323,6 +341,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   
   const result: InstallResult = {
     installed: [],
+    removed: [],
     skipped: [],
   };
   
@@ -339,12 +358,24 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   // NEW: If --npm flag, use staging + file: protocol flow
   // ================================================================
   if (options.runNpm) {
-    // Phase 1: Resolve all packages cross-namespace
+    const isNpmManager = modeConfig.manager === "npm";
+    
+    // Phase 1: Resolve all packages
     const resolvedPackages: ResolvedPackage[] = [];
+    const registryPackages: { name: string; version: string }[] = [];
+    const removePackageNames: string[] = [];
     for (const [pkgName, versions] of Object.entries(config.packages)) {
-      const version = mode === "dev" ? versions.dev : versions.prod;
+      const version = versions[mode];
       if (!version) {
-        result.skipped.push({ name: pkgName, version: "N/A", reason: `No ${mode} version specified` });
+        // No version for this mode → remove from package.json
+        removePackageNames.push(pkgName);
+        continue;
+      }
+      
+      // When manager is "npm", packages are resolved by npm from registry
+      // — inject them as exact versions so npm fetches from configured registry
+      if (isNpmManager) {
+        registryPackages.push({ name: pkgName, version });
         continue;
       }
       
@@ -364,22 +395,41 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       });
     }
     
-    if (resolvedPackages.length === 0) {
+    if (resolvedPackages.length === 0 && registryPackages.length === 0 && removePackageNames.length === 0) {
       // Still run npm install even if no devlink packages
       result.npmExitCode = await runNpmInstall(options.runScripts);
       return result;
     }
+
+    if (removePackageNames.length > 0) {
+      console.log(`\n🗑️  Removing ${removePackageNames.length} package(s) not in ${mode} mode:`);
+      for (const name of removePackageNames) {
+        console.log(`  - ${name}`);
+      }
+    }
+
+    if (registryPackages.length > 0) {
+      console.log(`\n📡 Injecting ${registryPackages.length} package(s) from registry:`);
+      for (const pkg of registryPackages) {
+        console.log(`  - ${pkg.name}@${pkg.version}`);
+      }
+    }
     
-    // Phase 2: Stage + Re-link
-    console.log(`\n📦 Staging ${resolvedPackages.length} package(s) to ${STAGING_DIR}/...`);
-    const staging = await stageAndRelink(projectPath, resolvedPackages);
+    // Phase 2: Stage + Re-link (only for store manager)
+    if (resolvedPackages.length > 0) {
+      console.log(`\n📦 Staging ${resolvedPackages.length} package(s) to ${STAGING_DIR}/...`);
+    }
+    const staging = resolvedPackages.length > 0
+      ? await stageAndRelink(projectPath, resolvedPackages)
+      : { staged: [], relinked: [] };
     
     if (staging.relinked.length > 0) {
       console.log(`  ↳ Re-linked ${staging.relinked.length} internal dependency(ies)`);
     }
     
-    // Phase 3: Inject file: deps + npm install
-    const backup = await injectStagedPackages(projectPath, staging.staged);
+    // Phase 3: Inject file: deps + registry deps + remove excluded + npm install
+    const backup = await injectStagedPackages(projectPath, staging.staged, removePackageNames, registryPackages);
+    result.removed = removePackageNames;
     
     // Register signal handlers for cleanup
     const onSignal = async () => {
@@ -426,6 +476,16 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
         
         result.installed.push(pkg);
       }
+
+      // Track registry packages (resolved by npm, not from store)
+      for (const pkg of registryPackages) {
+        result.installed.push({
+          name: pkg.name,
+          version: pkg.version,
+          qname: `${pkg.name}@${pkg.version}`,
+          namespace: "registry",
+        });
+      }
       
       // Run afterAll hook
       if (modeConfig.afterAll) {
@@ -464,7 +524,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   }
 
   for (const [pkgName, versions] of Object.entries(config.packages)) {
-    const version = mode === "dev" ? versions.dev : versions.prod;
+    const version = versions[mode];
     if (!version) {
       result.skipped.push({ name: pkgName, version: "N/A", reason: `No ${mode} version specified` });
       continue;
@@ -534,6 +594,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
  */
 export async function handleInstall(args: {
   config?: string;
+  mode?: string;
   dev?: boolean;
   prod?: boolean;
   namespaces?: string[];
@@ -541,7 +602,7 @@ export async function handleInstall(args: {
   runScripts?: boolean;
 }): Promise<void> {
   try {
-    const mode = args.prod ? "prod" : args.dev ? "dev" : undefined;
+    const mode = args.mode || (args.prod ? "prod" : args.dev ? "dev" : undefined);
     
     console.log(`📦 Installing packages${mode ? ` (${mode} mode)` : ""}...`);
     
@@ -559,6 +620,13 @@ export async function handleInstall(args: {
         console.log(`  - ${pkg.name}@${pkg.version} (${pkg.namespace})`);
       }
     }
+
+    if (result.removed.length > 0) {
+      console.log(`\n✓ Removed ${result.removed.length} package(s) (not in mode):`);
+      for (const name of result.removed) {
+        console.log(`  - ${name}`);
+      }
+    }
     
     if (result.skipped.length > 0) {
       console.log(`\n⚠️  Skipped ${result.skipped.length} package(s):`);
@@ -567,7 +635,7 @@ export async function handleInstall(args: {
       }
     }
     
-    if (result.installed.length === 0 && result.skipped.length === 0) {
+    if (result.installed.length === 0 && result.skipped.length === 0 && result.removed.length === 0) {
       console.log("No packages to install");
     }
     
