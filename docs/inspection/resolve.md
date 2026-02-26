@@ -5,7 +5,7 @@ Debug package resolution by showing where packages would be found.
 ## Usage
 
 ```bash
-devlink resolve <pkg@version> [...] [options]
+dev-link resolve <pkg@version> [...] [options]
 ```
 
 ## Arguments
@@ -39,7 +39,7 @@ This is useful for debugging resolution issues before running `install`.
 ### Resolve Single Package
 
 ```bash
-devlink resolve @scope/core@1.0.0
+dev-link resolve @scope/core@1.0.0
 ```
 
 Output:
@@ -57,7 +57,7 @@ Summary: 1/1 resolved
 ### Resolve with Namespace Precedence
 
 ```bash
-devlink resolve @scope/core@1.0.0 -n feature-v2,global
+dev-link resolve @scope/core@1.0.0 -n feature-v2,global
 ```
 
 Output:
@@ -75,7 +75,7 @@ Summary: 1/1 resolved
 ### Resolve Multiple Packages
 
 ```bash
-devlink resolve @scope/core@1.0.0 @scope/utils@2.0.0 -n feature-v2,global
+dev-link resolve @scope/core@1.0.0 @scope/utils@2.0.0 -n feature-v2,global
 ```
 
 Output:
@@ -99,7 +99,7 @@ Summary: 2/2 resolved
 ### Package Not Found
 
 ```bash
-devlink resolve @scope/missing@1.0.0 -n feature-v2,global
+dev-link resolve @scope/missing@1.0.0 -n feature-v2,global
 ```
 
 Output:
@@ -117,7 +117,7 @@ Summary: 0/1 resolved
 ### Flat Output
 
 ```bash
-devlink resolve @scope/core@1.0.0 @scope/utils@2.0.0 --flat
+dev-link resolve @scope/core@1.0.0 @scope/utils@2.0.0 --flat
 ```
 
 Output:
@@ -129,7 +129,7 @@ Output:
 ### Path Output (Machine-Readable)
 
 ```bash
-devlink resolve @scope/core@1.0.0 --path
+dev-link resolve @scope/core@1.0.0 --path
 ```
 
 Output:
@@ -147,7 +147,7 @@ Before running `install`, verify packages can be resolved:
 
 ```bash
 # Check all packages from your config
-devlink resolve @scope/core@1.0.0 @scope/utils@1.0.0 -n feature-v2,global
+dev-link resolve @scope/core@1.0.0 @scope/utils@1.0.0 -n feature-v2,global
 ```
 
 ### Verify Namespace Precedence
@@ -156,10 +156,10 @@ Check which namespace would be used:
 
 ```bash
 # Same package in multiple namespaces
-devlink resolve @scope/core@1.0.0 -n feature-v2,global
+dev-link resolve @scope/core@1.0.0 -n feature-v2,global
 # Shows: Found in feature-v2
 
-devlink resolve @scope/core@1.0.0 -n global,feature-v2
+dev-link resolve @scope/core@1.0.0 -n global,feature-v2
 # Shows: Found in global (different precedence)
 ```
 
@@ -168,7 +168,7 @@ devlink resolve @scope/core@1.0.0 -n global,feature-v2
 Verify a package was published correctly:
 
 ```bash
-devlink resolve @scope/new-pkg@1.0.0
+dev-link resolve @scope/new-pkg@1.0.0
 ```
 
 ## Resolution Algorithm

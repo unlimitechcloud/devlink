@@ -20,8 +20,8 @@ The `global` namespace is special:
 
 ```bash
 # These are equivalent
-devlink publish
-devlink publish -n global
+dev-link publish
+dev-link publish -n global
 ```
 
 ## Creating Namespaces
@@ -30,7 +30,7 @@ Namespaces are created automatically when you publish to them:
 
 ```bash
 # Creates 'feature-v2' namespace if it doesn't exist
-devlink publish -n feature-v2
+dev-link publish -n feature-v2
 ```
 
 ## Use Cases
@@ -42,7 +42,7 @@ Isolate experimental changes without affecting stable packages:
 ```bash
 # Developer working on v2 API
 cd my-sdk
-devlink publish -n sdk-v2
+dev-link publish -n sdk-v2
 
 # Consumer project uses sdk-v2 first, falls back to global
 # devlink.config.mjs:
@@ -54,8 +54,8 @@ devlink publish -n sdk-v2
 Different teams can have their own namespaces:
 
 ```bash
-devlink publish -n team-frontend
-devlink publish -n team-backend
+dev-link publish -n team-frontend
+dev-link publish -n team-backend
 ```
 
 ### Version Testing
@@ -64,10 +64,10 @@ Test new versions before promoting to global:
 
 ```bash
 # Publish beta to testing namespace
-devlink publish -n testing
+dev-link publish -n testing
 
 # After validation, publish to global
-devlink publish -n global
+dev-link publish -n global
 ```
 
 ## Namespace Precedence
@@ -111,20 +111,20 @@ Resolving @scope/utils@1.0.0:
 
 ```bash
 # List all packages grouped by namespace
-devlink list
+dev-link list
 
 # List specific namespaces
-devlink list -n global,feature-v2
+dev-link list -n global,feature-v2
 ```
 
 ## Removing Namespaces
 
 ```bash
 # Remove entire namespace (and all packages within)
-devlink remove feature-v2
+dev-link remove feature-v2
 
 # Note: Cannot remove 'global' namespace
-devlink remove global  # Error!
+dev-link remove global  # Error!
 ```
 
 ## Best Practices

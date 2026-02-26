@@ -1,11 +1,12 @@
 {
   "name": "@unlimitechcloud/devlink",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Local package development and linking tool with namespace support",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
+    "dev-link": "dist/cli.js",
     "devlink": "dist/cli.js"
   },
   "exports": {

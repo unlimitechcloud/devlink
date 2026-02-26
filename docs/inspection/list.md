@@ -5,7 +5,7 @@ Lists packages in the DevLink store.
 ## Usage
 
 ```bash
-devlink list [options]
+dev-link list [options]
 ```
 
 ## Options
@@ -24,7 +24,7 @@ devlink list [options]
 Hierarchical view with visual tree structure:
 
 ```bash
-devlink list
+dev-link list
 ```
 
 ```
@@ -51,7 +51,7 @@ feature-v2/
 One line per package, suitable for scripting:
 
 ```bash
-devlink list --flat
+dev-link list --flat
 ```
 
 ```
@@ -77,7 +77,7 @@ devlink list
 Packages grouped by name, showing which namespaces contain them:
 
 ```bash
-devlink list -p
+dev-link list -p
 ```
 
 ```
@@ -101,27 +101,27 @@ devlink list -p
 
 ```bash
 # Single namespace
-devlink list -n global
+dev-link list -n global
 
 # Multiple namespaces
-devlink list -n global,feature-v2
+dev-link list -n global,feature-v2
 ```
 
 ### Filter by Package
 
 ```bash
 # Specific packages
-devlink list -p @scope/core,@scope/utils
+dev-link list -p @scope/core,@scope/utils
 
 # By scope (all packages in scope)
-devlink list -p @scope
+dev-link list -p @scope
 ```
 
 ### Combined Filters
 
 ```bash
 # Packages in specific namespace
-devlink list -n global -p @scope/core
+dev-link list -n global -p @scope/core
 ```
 
 ## Examples
@@ -129,40 +129,40 @@ devlink list -n global -p @scope/core
 ### List Everything
 
 ```bash
-devlink list
+dev-link list
 ```
 
 ### List Only Global Namespace
 
 ```bash
-devlink list -n global
+dev-link list -n global
 ```
 
 ### List Packages by a Scope
 
 ```bash
-devlink list -p @myorg
+dev-link list -p @myorg
 ```
 
 ### Flat Output for Scripting
 
 ```bash
 # Count packages
-devlink list --flat | wc -l
+dev-link list --flat | wc -l
 
 # Find specific package
-devlink list --flat | grep "@scope/core"
+dev-link list --flat | grep "@scope/core"
 
 # List all versions of a package
-devlink list --flat | grep "@scope/core@"
+dev-link list --flat | grep "@scope/core@"
 ```
 
 ### Compare Namespaces
 
 ```bash
 # See what's in feature branch vs global
-devlink list -n feature-v2
-devlink list -n global
+dev-link list -n feature-v2
+dev-link list -n global
 ```
 
 ## Empty Store

@@ -19,7 +19,7 @@ The lock is implemented as a file at `{store}/.lock`:
 {
   "pid": 12345,
   "acquired": "2026-02-12T10:00:00Z",
-  "command": "devlink publish"
+  "command": "dev-link publish"
 }
 ```
 

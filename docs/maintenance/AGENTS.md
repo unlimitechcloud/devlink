@@ -6,9 +6,9 @@ Commands for maintaining the DevLink store.
 
 | Command | Description | Docs |
 |---------|-------------|------|
-| `devlink remove` | Remove packages, versions, or namespaces | `remove.md` |
-| `devlink verify` | Verify store integrity | `verify.md` |
-| `devlink prune` | Remove orphaned packages from disk | `prune.md` |
+| `dev-link remove` | Remove packages, versions, or namespaces | `remove.md` |
+| `dev-link verify` | Verify store integrity | `verify.md` |
+| `dev-link prune` | Remove orphaned packages from disk | `prune.md` |
 
 ## When to Use
 

@@ -5,7 +5,7 @@ Publishes a package from the current directory to the DevLink store.
 ## Usage
 
 ```bash
-devlink publish [options]
+dev-link publish [options]
 ```
 
 ## Options
@@ -47,7 +47,7 @@ Your `package.json` must have:
 
 ```bash
 cd my-package
-devlink publish
+dev-link publish
 ```
 
 Output:
@@ -61,23 +61,23 @@ Output:
 ### Publish to Custom Namespace
 
 ```bash
-devlink publish -n feature-v2
+dev-link publish -n feature-v2
 ```
 
 ### Publish to Custom Repo
 
 ```bash
-devlink publish --repo /path/to/repo
+dev-link publish --repo /path/to/repo
 ```
 
 ### Publish Multiple Versions
 
 ```bash
 # Publish v1
-devlink publish
+dev-link publish
 
 # Update version in package.json to 2.0.0
-devlink publish  # Both versions coexist
+dev-link publish  # Both versions coexist
 ```
 
 ## What Gets Published
@@ -113,10 +113,10 @@ Publishing the same version again overwrites the existing content:
 
 ```bash
 # First publish
-devlink publish  # @scope/pkg@1.0.0
+dev-link publish  # @scope/pkg@1.0.0
 
 # Make changes, publish again
-devlink publish  # Overwrites @scope/pkg@1.0.0
+dev-link publish  # Overwrites @scope/pkg@1.0.0
 ```
 
 The signature will change if the content changed.

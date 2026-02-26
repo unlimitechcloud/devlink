@@ -6,7 +6,7 @@ Complete reference for AI agents to use DevLink, a local package development and
 
 DevLink manages npm packages during local development. Instead of publishing to npm registry, packages are published to a local store and linked into consumer projects. This enables instant updates, namespace isolation for feature branches, and automatic propagation of changes.
 
-Binary: `devlink`
+Binary: `dev-link`
 
 ## Command Quick Reference
 
@@ -64,32 +64,32 @@ Each directory has an `agents.md` with context for that section, plus individual
 
 ```bash
 cd /path/to/my-library
-devlink publish              # Publish to store
-devlink push                 # Publish + update all consumers
+dev-link publish              # Publish to store
+dev-link push                 # Publish + update all consumers
 ```
 
 ### Install in Consumer Project
 
 ```bash
-devlink install --dev        # Install from store using devlink.config.mjs
-devlink install --dev --npm  # With npm dependency resolution
+dev-link install --dev        # Install from store using devlink.config.mjs
+dev-link install --dev --npm  # With npm dependency resolution
 ```
 
 ### Feature Branch Isolation
 
 ```bash
-devlink publish -n feature-v2           # Publish to feature namespace
-devlink install --dev -n feature-v2,global  # Consumer resolves feature first
-devlink remove feature-v2               # Clean up after merge
+dev-link publish -n feature-v2           # Publish to feature namespace
+dev-link install --dev -n feature-v2,global  # Consumer resolves feature first
+dev-link remove feature-v2               # Clean up after merge
 ```
 
 ### Store Maintenance
 
 ```bash
-devlink verify               # Check store integrity
-devlink verify --fix         # Auto-fix issues
-devlink prune --dry-run      # Preview orphan cleanup
-devlink consumers --prune    # Remove dead consumer entries
+dev-link verify               # Check store integrity
+dev-link verify --fix         # Auto-fix issues
+dev-link prune --dry-run      # Preview orphan cleanup
+dev-link consumers --prune    # Remove dead consumer entries
 ```
 
 ## Error Handling

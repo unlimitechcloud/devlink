@@ -5,7 +5,7 @@ Removes orphaned packages from the store.
 ## Usage
 
 ```bash
-devlink prune [options]
+dev-link prune [options]
 ```
 
 ## Options
@@ -29,7 +29,7 @@ The `prune` command removes packages that exist on disk but are not in the regis
 ### Prune All Orphans
 
 ```bash
-devlink prune
+dev-link prune
 ```
 
 Output:
@@ -48,7 +48,7 @@ Pruned 2 package(s), freed 15.2 MB
 Preview what would be removed:
 
 ```bash
-devlink prune --dry-run
+dev-link prune --dry-run
 ```
 
 Output:
@@ -67,7 +67,7 @@ Run without --dry-run to actually remove
 ### Prune Specific Namespace
 
 ```bash
-devlink prune -n feature-v2
+dev-link prune -n feature-v2
 ```
 
 Output:
@@ -110,8 +110,8 @@ Use `verify --fix` for comprehensive cleanup, or `prune` when you specifically w
 Run periodically to keep the store clean:
 
 ```bash
-devlink prune --dry-run  # Check first
-devlink prune            # Then clean
+dev-link prune --dry-run  # Check first
+dev-link prune            # Then clean
 ```
 
 ### After Failed Operations
@@ -119,7 +119,7 @@ devlink prune            # Then clean
 If a publish was interrupted:
 
 ```bash
-devlink prune
+dev-link prune
 ```
 
 ### Before Backup
@@ -127,7 +127,7 @@ devlink prune
 Clean up before backing up the store:
 
 ```bash
-devlink prune
+dev-link prune
 tar -czf devlink-backup.tar.gz ~/.devlink
 ```
 
@@ -136,8 +136,8 @@ tar -czf devlink-backup.tar.gz ~/.devlink
 Find and remove orphaned packages to free space:
 
 ```bash
-devlink prune --dry-run  # See how much space would be freed
-devlink prune            # Actually free the space
+dev-link prune --dry-run  # See how much space would be freed
+dev-link prune            # Actually free the space
 ```
 
 ## Safety
@@ -147,9 +147,9 @@ The `prune` command only removes packages that are NOT in the registry. Packages
 To be extra safe, always use `--dry-run` first:
 
 ```bash
-devlink prune --dry-run
+dev-link prune --dry-run
 # Review the output
-devlink prune
+dev-link prune
 ```
 
 ## See Also

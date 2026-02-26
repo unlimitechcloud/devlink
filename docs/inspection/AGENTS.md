@@ -6,9 +6,9 @@ Commands for inspecting the DevLink store and package resolution.
 
 | Command | Description | Docs |
 |---------|-------------|------|
-| `devlink list` | List packages in the store | `list.md` |
-| `devlink resolve` | Debug package resolution across namespaces | `resolve.md` |
-| `devlink consumers` | List projects that consume packages | `consumers.md` |
+| `dev-link list` | List packages in the store | `list.md` |
+| `dev-link resolve` | Debug package resolution across namespaces | `resolve.md` |
+| `dev-link consumers` | List projects that consume packages | `consumers.md` |
 
 ## When to Use
 

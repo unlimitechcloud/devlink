@@ -48,10 +48,10 @@ function printDocHints(command?: string): void {
   console.error("");
   console.error("📚 Documentation:");
   if (command && COMMAND_DOCS[command]) {
-    console.error(`   devlink docs ${COMMAND_DOCS[command]}.md    Command reference`);
+    console.error(`   dev-link docs ${COMMAND_DOCS[command]}.md    Command reference`);
   }
-  console.error("   devlink docs agents.md              Complete guide for AI agents");
-  console.error("   devlink --help                      General help");
+  console.error("   dev-link docs agents.md              Complete guide for AI agents");
+  console.error("   dev-link --help                      General help");
 }
 
 // ── Helper to split comma-separated values ────────────────────────────────────
@@ -65,9 +65,9 @@ function commaSeparated(value: string): string[] {
 const program = new Command();
 
 program
-  .name("devlink")
+  .name("dev-link")
   .description("Local package development tool with namespaces")
-  .version(`devlink v${VERSION}`, "-v, --version")
+  .version(`dev-link v${VERSION}`, "-v, --version")
   .option("--repo <path>", "Use custom repo path instead of ~/.devlink")
   .hook("preAction", (thisCommand) => {
     const opts = thisCommand.opts();
@@ -231,11 +231,11 @@ program
 
 const DOCS_NOTICE = `
 📚 Documentation:
-   devlink docs                    Browse documentation
-   devlink docs agents.md          Agent guide (root)
+   dev-link docs                    Browse documentation
+   dev-link docs agents.md          Agent guide (root)
 
 🤖 AI Agents:
-   Start with "devlink docs agents.md" for the root guide.
+   Start with "dev-link docs agents.md" for the root guide.
    Each directory has an agents.md with context for that section.
    Navigate deeper: agents.md → store/agents.md, publishing/agents.md, etc.`;
 

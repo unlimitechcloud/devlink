@@ -5,7 +5,7 @@ Installs packages from the DevLink store into a project.
 ## Usage
 
 ```bash
-devlink install [options]
+dev-link install [options]
 ```
 
 ## Options
@@ -71,43 +71,43 @@ See [Configuration](configuration.md) for full reference.
 
 ```bash
 cd my-project
-devlink install
+dev-link install
 ```
 
 ### Specify Mode
 
 ```bash
-devlink install --mode dev
-devlink install --mode remote
+dev-link install --mode dev
+dev-link install --mode remote
 ```
 
 ### Shorthand Flags
 
 ```bash
-devlink install --dev    # same as --mode dev
-devlink install --prod   # same as --mode prod
+dev-link install --dev    # same as --mode dev
+dev-link install --prod   # same as --mode prod
 ```
 
 ### Override Namespaces
 
 ```bash
-devlink install -n feature-v2,global
+dev-link install -n feature-v2,global
 ```
 
 ### Custom Config Path
 
 ```bash
-devlink install -c ./config/devlink.config.mjs
+dev-link install -c ./config/devlink.config.mjs
 ```
 
 ### Combined with npm install
 
 ```bash
 # Dev: stage from store + npm install
-devlink install --mode dev --npm
+dev-link install --mode dev --npm
 
 # Remote: inject registry versions + npm install
-devlink install --mode remote --npm
+dev-link install --mode remote --npm
 ```
 
 ## Mode System
@@ -264,8 +264,8 @@ The `--npm` flag enables DevLink's npm integration. Behavior depends on the mana
 ```json
 {
   "scripts": {
-    "dev:install": "devlink install --mode dev --npm",
-    "remote:install": "devlink install --mode remote --npm"
+    "dev:install": "dev-link install --mode dev --npm",
+    "remote:install": "dev-link install --mode remote --npm"
   }
 }
 ```

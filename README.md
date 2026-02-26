@@ -30,7 +30,7 @@ npx @unlimitechcloud/devlink <command>
 
 ```bash
 cd my-library
-devlink publish
+dev-link publish
 ```
 
 This copies your package to the DevLink store (`~/.devlink/namespaces/global/`).
@@ -56,7 +56,7 @@ export default {
 
 ```bash
 cd my-project
-devlink install --dev --npm
+dev-link install --dev --npm
 ```
 
 DevLink copies the packages from the store to your `node_modules`.
@@ -67,7 +67,7 @@ After making changes to your library:
 
 ```bash
 cd my-library
-devlink push
+dev-link push
 ```
 
 This publishes the new version AND automatically updates all consumer projects.
@@ -89,87 +89,87 @@ This publishes the new version AND automatically updates all consumer projects.
 
 ### Command Details
 
-#### `devlink publish`
+#### `dev-link publish`
 
 Publishes the current package to the DevLink store.
 
 ```bash
-devlink publish                    # Publish to global namespace
-devlink publish -n feature-v2      # Publish to feature-v2 namespace
-devlink publish --repo ~/custom    # Use custom store location
+dev-link publish                    # Publish to global namespace
+dev-link publish -n feature-v2      # Publish to feature-v2 namespace
+dev-link publish --repo ~/custom    # Use custom store location
 ```
 
-#### `devlink push`
+#### `dev-link push`
 
 Publishes and automatically updates all consumer projects that use this package.
 
 ```bash
-devlink push                       # Publish and update consumers
-devlink push -n feature-v2         # Push to specific namespace
+dev-link push                       # Publish and update consumers
+dev-link push -n feature-v2         # Push to specific namespace
 ```
 
-#### `devlink install`
+#### `dev-link install`
 
 Installs packages from the store or registry based on your `devlink.config.mjs`.
 
 ```bash
-devlink install                        # Install using default/detected mode
-devlink install --mode dev --npm       # Dev mode with npm integration
-devlink install --mode remote --npm    # Remote mode (registry resolution)
-devlink install --dev --npm            # Shorthand for --mode dev
-devlink install -n feature,global      # Override namespace precedence
+dev-link install                        # Install using default/detected mode
+dev-link install --mode dev --npm       # Dev mode with npm integration
+dev-link install --mode remote --npm    # Remote mode (registry resolution)
+dev-link install --dev --npm            # Shorthand for --mode dev
+dev-link install -n feature,global      # Override namespace precedence
 ```
 
-#### `devlink list`
+#### `dev-link list`
 
 Lists all packages in the store.
 
 ```bash
-devlink list                       # Tree view by namespace
-devlink list --flat                # Flat output (for scripting)
-devlink list -n global             # Filter by namespace
-devlink list -p @myorg             # Filter by scope
-devlink list -p @myorg/core        # Filter by package
+dev-link list                       # Tree view by namespace
+dev-link list --flat                # Flat output (for scripting)
+dev-link list -n global             # Filter by namespace
+dev-link list -p @myorg             # Filter by scope
+dev-link list -p @myorg/core        # Filter by package
 ```
 
-#### `devlink resolve`
+#### `dev-link resolve`
 
 Shows how packages would be resolved given namespace precedence.
 
 ```bash
-devlink resolve @myorg/core@1.0.0
-devlink resolve @myorg/core@1.0.0 -n feature,global
+dev-link resolve @myorg/core@1.0.0
+dev-link resolve @myorg/core@1.0.0 -n feature,global
 ```
 
-#### `devlink consumers`
+#### `dev-link consumers`
 
 Lists projects that have installed packages from the store.
 
 ```bash
-devlink consumers                  # List all consumers
-devlink consumers -p @myorg/core   # Filter by package
-devlink consumers --prune          # Remove dead projects
+dev-link consumers                  # List all consumers
+dev-link consumers -p @myorg/core   # Filter by package
+dev-link consumers --prune          # Remove dead projects
 ```
 
-#### `devlink remove`
+#### `dev-link remove`
 
 Removes packages, versions, or entire namespaces.
 
 ```bash
-devlink remove @myorg/core@1.0.0   # Remove specific version
-devlink remove @myorg/core         # Remove all versions
-devlink remove feature-v2          # Remove entire namespace
+dev-link remove @myorg/core@1.0.0   # Remove specific version
+dev-link remove @myorg/core         # Remove all versions
+dev-link remove feature-v2          # Remove entire namespace
 ```
 
-#### `devlink docs`
+#### `dev-link docs`
 
 Access embedded documentation from the CLI.
 
 ```bash
-devlink docs                       # Show documentation tree
-devlink docs agents.md             # AI agent guide (root)
-devlink docs store/namespaces.md   # Specific topic
-devlink docs store/agents.md       # Store section agent guide
+dev-link docs                       # Show documentation tree
+dev-link docs agents.md             # AI agent guide (root)
+dev-link docs store/namespaces.md   # Specific topic
+dev-link docs store/agents.md       # Store section agent guide
 ```
 
 ## Configuration
@@ -236,13 +236,13 @@ Namespaces allow different projects to use different variants of the same packag
 
 ```bash
 # Feature branch development
-devlink publish -n feature-auth
+dev-link publish -n feature-auth
 
 # Team-specific packages
-devlink publish -n team-platform
+dev-link publish -n team-platform
 
 # Environment-specific
-devlink publish -n staging
+dev-link publish -n staging
 ```
 
 **Use cases:**
@@ -263,32 +263,32 @@ namespaces: ["feature-auth", "global"]
 ```bash
 # Developer A: Working on auth feature
 cd packages/auth
-devlink publish -n feature-auth
+dev-link publish -n feature-auth
 
 # Developer B: Testing auth changes
 # devlink.config.mjs: namespaces: ["feature-auth", "global"]
-devlink install --dev
+dev-link install --dev
 
 # After feature is merged
-devlink publish                    # Publish to global
-devlink remove feature-auth        # Clean up
+dev-link publish                    # Publish to global
+dev-link remove feature-auth        # Clean up
 ```
 
 ### Monorepo Development
 
 ```bash
 # Publish all packages
-cd packages/core && devlink publish
-cd packages/utils && devlink publish
-cd packages/ui && devlink publish
+cd packages/core && dev-link publish
+cd packages/utils && dev-link publish
+cd packages/ui && dev-link publish
 
 # Consumer app
 cd apps/web
-devlink install --dev
+dev-link install --dev
 
 # After changes to core
 cd packages/core
-devlink push                       # Updates apps/web automatically
+dev-link push                       # Updates apps/web automatically
 ```
 
 ### Using DevLink as Default Install Command
@@ -298,8 +298,8 @@ Replace `npm install` with DevLink during development using npm lifecycle hooks:
 ```json
 {
   "scripts": {
-    "dev:install": "devlink install --mode dev --npm",
-    "remote:install": "devlink install --mode remote --npm"
+    "dev:install": "dev-link install --mode dev --npm",
+    "remote:install": "dev-link install --mode remote --npm"
   }
 }
 ```
@@ -313,12 +313,12 @@ DevLink includes comprehensive, hierarchical documentation designed for AI codin
 
 ```bash
 # View the root AI agent guide
-devlink docs agents.md
+dev-link docs agents.md
 
 # Section-specific guides
-devlink docs store/agents.md
-devlink docs publishing/agents.md
-devlink docs installation/agents.md
+dev-link docs store/agents.md
+dev-link docs publishing/agents.md
+dev-link docs installation/agents.md
 ```
 
 AI agents can also read the development guide at `AGENTS.md` in the project root for codebase internals.
@@ -346,10 +346,10 @@ AI agents can also read the development guide at `AGENTS.md` in the project root
 📚 Access documentation directly from the CLI:
 
 ```bash
-devlink docs                       # Browse documentation tree
-devlink docs agents.md             # Complete AI agent guide
-devlink docs store                 # List store documents
-devlink docs store/namespaces.md   # Specific topic
+dev-link docs                       # Browse documentation tree
+dev-link docs agents.md             # Complete AI agent guide
+dev-link docs store                 # List store documents
+dev-link docs store/namespaces.md   # Specific topic
 ```
 
 Each section has its own agent guide (`agents.md`) with context for that area:
@@ -382,14 +382,11 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [1.2.0] - 2026-02-26
+### Latest: [1.3.0] - 2026-02-26
 
-- Dynamic `--mode <name>` flag for custom install modes
-- Registry package injection for `manager: "npm"` (e.g. GitHub Packages)
-- Package removal for mode-specific package sets
-- `detectMode()` config function for automatic mode selection
-- `--dev`/`--prod` kept as backward-compatible shorthands
-- `prod` factory no longer required in configuration
+- Renamed CLI binary from `devlink` to `dev-link` (avoids Linux system command conflicts)
+- `devlink` preserved as backward-compatible alias
+- All documentation updated to reference `dev-link`
 
 📄 [Full Changelog](CHANGELOG.md)
 

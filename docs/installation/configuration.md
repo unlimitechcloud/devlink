@@ -158,13 +158,13 @@ The mode is determined by (in priority order):
 
 ```bash
 # Explicit mode
-devlink install --mode remote --npm
+dev-link install --mode remote --npm
 
 # Shorthand
-devlink install --dev --npm
+dev-link install --dev --npm
 
 # Auto-detect via detectMode()
-devlink install --npm
+dev-link install --npm
 ```
 
 ## Namespace Override
@@ -173,10 +173,10 @@ The `-n` flag overrides configured namespaces:
 
 ```bash
 # Uses namespaces from config
-devlink install
+dev-link install
 
 # Overrides to use feature-v2 first
-devlink install -n feature-v2,global
+dev-link install -n feature-v2,global
 ```
 
 ## Tips

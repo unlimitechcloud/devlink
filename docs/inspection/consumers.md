@@ -5,7 +5,7 @@ Lists projects that have installed packages from the DevLink store.
 ## Usage
 
 ```bash
-devlink consumers [options]
+dev-link consumers [options]
 ```
 
 ## Options
@@ -27,7 +27,7 @@ The `consumers` command shows which projects have installed packages from the st
 ### List All Consumers
 
 ```bash
-devlink consumers
+dev-link consumers
 ```
 
 Output:
@@ -49,7 +49,7 @@ Total: 2 projects, 3 installations
 ### Filter by Package
 
 ```bash
-devlink consumers -p @scope/core
+dev-link consumers -p @scope/core
 ```
 
 Shows only projects that have installed `@scope/core`.
@@ -57,7 +57,7 @@ Shows only projects that have installed `@scope/core`.
 ### Filter by Namespace
 
 ```bash
-devlink consumers -n feature-v2
+dev-link consumers -n feature-v2
 ```
 
 Shows only projects using packages from the `feature-v2` namespace.
@@ -65,7 +65,7 @@ Shows only projects using packages from the `feature-v2` namespace.
 ### Flat Output
 
 ```bash
-devlink consumers --flat
+dev-link consumers --flat
 ```
 
 Output:
@@ -80,7 +80,7 @@ Output:
 Remove projects that no longer exist on disk:
 
 ```bash
-devlink consumers --prune
+dev-link consumers --prune
 ```
 
 Output:
@@ -95,7 +95,7 @@ Pruned 1 project(s)
 
 ## Consumer Tracking
 
-Projects become consumers when they run `devlink install`. The installation is recorded with:
+Projects become consumers when they run `dev-link install`. The installation is recorded with:
 
 - Project path
 - Installed packages
@@ -111,7 +111,7 @@ Projects become consumers when they run `devlink install`. The installation is r
 Check who would be affected:
 
 ```bash
-devlink consumers -p @scope/core
+dev-link consumers -p @scope/core
 ```
 
 ### Verify Push Targets
@@ -120,10 +120,10 @@ See which projects will be updated by `push`:
 
 ```bash
 # Publish to feature-v2
-devlink publish -n feature-v2
+dev-link publish -n feature-v2
 
 # Check who uses feature-v2
-devlink consumers -n feature-v2
+dev-link consumers -n feature-v2
 ```
 
 ### Clean Up Stale Data
@@ -131,7 +131,7 @@ devlink consumers -n feature-v2
 Remove references to deleted projects:
 
 ```bash
-devlink consumers --prune
+dev-link consumers --prune
 ```
 
 ### Audit Package Usage
@@ -139,7 +139,7 @@ devlink consumers --prune
 See all projects using a specific package:
 
 ```bash
-devlink consumers -p @scope/core --flat | wc -l
+dev-link consumers -p @scope/core --flat | wc -l
 ```
 
 ## Data Location
@@ -168,7 +168,7 @@ Consumer data is stored in `~/.devlink/installations.json`:
 ## Notes
 
 - The `--prune` flag requires a lock (modifies `installations.json`)
-- Projects are automatically registered during `devlink install`
+- Projects are automatically registered during `dev-link install`
 - Projects are not automatically unregistered when deleted
 
 ## See Also

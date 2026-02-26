@@ -15,11 +15,11 @@ You can use a custom location via:
 
 ```bash
 # Command line flag
-devlink --repo /path/to/repo list
+dev-link --repo /path/to/repo list
 
 # Environment variable
 export DEVLINK_REPO=/path/to/repo
-devlink list
+dev-link list
 ```
 
 This allows maintaining multiple independent stores for different projects or teams.

@@ -5,7 +5,7 @@ Publishes a package and automatically updates all consumer projects.
 ## Usage
 
 ```bash
-devlink push [options]
+dev-link push [options]
 ```
 
 ## Options
@@ -31,7 +31,7 @@ This is the recommended command during active development.
 
 ```bash
 cd my-sdk/packages/core
-devlink push
+dev-link push
 ```
 
 Output:
@@ -104,7 +104,7 @@ vim src/index.ts
 npm run build
 
 # Push to all consumers
-devlink push
+dev-link push
 ```
 
 All consumer projects immediately get the updated code.
@@ -113,7 +113,7 @@ All consumer projects immediately get the updated code.
 
 ```bash
 # Publish to feature namespace
-devlink push -n feature-v2
+dev-link push -n feature-v2
 
 # Only consumers using feature-v2 namespace are updated
 ```
@@ -128,7 +128,7 @@ If a consumer project no longer exists (deleted), `push` will:
 To clean up dead projects:
 
 ```bash
-devlink consumers --prune
+dev-link consumers --prune
 ```
 
 ## Comparison with Publish

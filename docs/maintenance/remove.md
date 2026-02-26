@@ -5,7 +5,7 @@ Removes packages, versions, or namespaces from the store.
 ## Usage
 
 ```bash
-devlink remove <target> [options]
+dev-link remove <target> [options]
 ```
 
 ## Arguments
@@ -28,7 +28,7 @@ devlink remove <target> [options]
 Remove a single version of a package:
 
 ```bash
-devlink remove @scope/core@1.0.0 -n global
+dev-link remove @scope/core@1.0.0 -n global
 ```
 
 ### Entire Package
@@ -36,7 +36,7 @@ devlink remove @scope/core@1.0.0 -n global
 Remove all versions of a package:
 
 ```bash
-devlink remove @scope/core -n global
+dev-link remove @scope/core -n global
 ```
 
 ### Namespace
@@ -44,7 +44,7 @@ devlink remove @scope/core -n global
 Remove an entire namespace and all packages within:
 
 ```bash
-devlink remove feature-v2
+dev-link remove feature-v2
 ```
 
 ## Examples
@@ -52,7 +52,7 @@ devlink remove feature-v2
 ### Remove Specific Version
 
 ```bash
-devlink remove @scope/core@1.0.0 -n global
+dev-link remove @scope/core@1.0.0 -n global
 ```
 
 Output:
@@ -63,7 +63,7 @@ Output:
 ### Remove All Versions
 
 ```bash
-devlink remove @scope/core -n global
+dev-link remove @scope/core -n global
 ```
 
 Output:
@@ -74,7 +74,7 @@ Output:
 ### Remove Namespace
 
 ```bash
-devlink remove feature-v2
+dev-link remove feature-v2
 ```
 
 Output:
@@ -89,7 +89,7 @@ Output:
 The `global` namespace is reserved and cannot be deleted:
 
 ```bash
-devlink remove global
+dev-link remove global
 ```
 
 Output:
@@ -103,10 +103,10 @@ When removing packages, you must specify the namespace:
 
 ```bash
 # Error: namespace required
-devlink remove @scope/core
+dev-link remove @scope/core
 
 # Correct
-devlink remove @scope/core -n global
+dev-link remove @scope/core -n global
 ```
 
 ## What Gets Removed
@@ -139,7 +139,7 @@ Removing packages does NOT automatically update consumers. Projects that have in
 To check affected consumers before removing:
 
 ```bash
-devlink consumers -p @scope/core -n global
+dev-link consumers -p @scope/core -n global
 ```
 
 ## Use Cases
@@ -148,8 +148,8 @@ devlink consumers -p @scope/core -n global
 
 ```bash
 # Keep only latest version
-devlink remove @scope/core@1.0.0 -n global
-devlink remove @scope/core@1.1.0 -n global
+dev-link remove @scope/core@1.0.0 -n global
+dev-link remove @scope/core@1.1.0 -n global
 # 2.0.0 remains
 ```
 
@@ -158,13 +158,13 @@ devlink remove @scope/core@1.1.0 -n global
 After merging a feature branch:
 
 ```bash
-devlink remove feature-auth-v2
+dev-link remove feature-auth-v2
 ```
 
 ### Remove Accidentally Published Package
 
 ```bash
-devlink remove @scope/wrong-pkg -n global
+dev-link remove @scope/wrong-pkg -n global
 ```
 
 ## See Also

@@ -5,7 +5,7 @@ Verifies the integrity of the DevLink store.
 ## Usage
 
 ```bash
-devlink verify [options]
+dev-link verify [options]
 ```
 
 ## Options
@@ -53,7 +53,7 @@ Package content doesn't match the recorded signature.
 ### Check Store Integrity
 
 ```bash
-devlink verify
+dev-link verify
 ```
 
 Output (healthy store):
@@ -80,7 +80,7 @@ Store is healthy ✓
 ### Store with Issues
 
 ```bash
-devlink verify
+dev-link verify
 ```
 
 Output:
@@ -99,13 +99,13 @@ Summary:
   ✗ Orphans in registry:  1
   ⚠ Orphans on disk:      1
 
-Run 'devlink verify --fix' to repair
+Run 'dev-link verify --fix' to repair
 ```
 
 ### Auto-Fix Issues
 
 ```bash
-devlink verify --fix
+dev-link verify --fix
 ```
 
 Output:
@@ -130,7 +130,7 @@ Store is now healthy ✓
 If DevLink or your system crashed during an operation:
 
 ```bash
-devlink verify --fix
+dev-link verify --fix
 ```
 
 ### Periodic Maintenance
@@ -138,7 +138,7 @@ devlink verify --fix
 Run periodically to ensure store health:
 
 ```bash
-devlink verify
+dev-link verify
 ```
 
 ### Before Important Operations
@@ -146,8 +146,8 @@ devlink verify
 Verify before publishing critical packages:
 
 ```bash
-devlink verify
-devlink publish
+dev-link verify
+dev-link publish
 ```
 
 ### After Manual File Operations
@@ -155,7 +155,7 @@ devlink publish
 If you manually modified files in the store:
 
 ```bash
-devlink verify --fix
+dev-link verify --fix
 ```
 
 ## Lock Requirement

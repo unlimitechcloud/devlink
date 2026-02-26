@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-02-26
+
+### Changed
+- Renamed CLI binary from `devlink` to `dev-link` to avoid conflicts with existing Linux system commands
+- The `devlink` binary name is preserved as a backward-compatible alias
+- Updated all documentation, README, and help text to reference `dev-link`
+
 ## [1.2.0] - 2026-02-26
 
 ### Added

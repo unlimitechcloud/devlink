@@ -1,6 +1,6 @@
 # DevLink — Development Guide
 
-Guide for AI agents working on the DevLink codebase. For usage documentation, use `devlink docs agents.md`.
+Guide for AI agents working on the DevLink codebase. For usage documentation, use `dev-link docs agents.md`.
 
 ## Project Structure
 
@@ -97,7 +97,7 @@ DevLink publishes itself via DevLink:
 
 ```bash
 npm run build
-devlink push           # Publish + update all consumers
+dev-link push           # Publish + update all consumers
 ```
 
 ## Conventions

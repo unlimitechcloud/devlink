@@ -6,8 +6,8 @@ Commands for publishing packages to the DevLink store.
 
 | Command | Description | Docs |
 |---------|-------------|------|
-| `devlink publish` | Publish package to store | `publish.md` |
-| `devlink push` | Publish and update all consumer projects | `push.md` |
+| `dev-link publish` | Publish package to store | `publish.md` |
+| `dev-link push` | Publish and update all consumer projects | `push.md` |
 
 ## When to Use
 
