@@ -382,11 +382,14 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [1.3.0] - 2026-02-26
+### Latest: [2.0.0] - 2026-02-27
 
-- Renamed CLI binary from `devlink` to `dev-link` (avoids Linux system command conflicts)
-- `devlink` preserved as backward-compatible alias
-- All documentation updated to reference `dev-link`
+- **Breaking:** Package version format changed from flat mode keys to nested `version` object
+- **Breaking:** Removed `detectMode` from config interface
+- New `tree` command for monorepo structure scanning
+- Multilevel install (`--recursive`) for hierarchical monorepo support
+- Synthetic packages support (`synthetic: true`) for store-only staging
+- Custom config file support (`--config-name`, `--config-key`)
 
 📄 [Full Changelog](CHANGELOG.md)
 

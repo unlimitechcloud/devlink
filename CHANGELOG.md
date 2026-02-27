@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-02-27
+
+### Breaking Changes
+- Package version format in `devlink.config.mjs` changed from flat mode keys to nested `version` object. Migration required:
+  ```js
+  // Before (v1.x)
+  packages: {
+    "@myorg/core": { dev: "1.0.0", remote: "1.0.0" },
+  }
+  // After (v2.0)
+  packages: {
+    "@myorg/core": { version: { dev: "1.0.0", remote: "1.0.0" } },
+  }
+  ```
+- Removed `detectMode` from config interface. Mode detection is now handled externally by the consumer CLI.
+- Removed `PackageVersions` type (replaced by `PackageSpecNew`).
+
+### Added
+- `tree` command — scans monorepo structure by reading `package.json` workspaces recursively. Detects sub-monorepos and isolated packages. Supports `--json` output for programmatic consumption.
+- Multilevel install (`--recursive`) — resolves and installs dependencies at every level of the monorepo hierarchy (root → sub-monorepos → isolated packages), each level with its own staging + npm install cycle.
+- Synthetic packages — packages marked `synthetic: true` in config are staged to `.devlink/` and rewritten in `package-lock.json` via `file:` protocol, but not added to `package.json` dependencies. Useful for packages managed by external tools (e.g., `sst install`).
+- Custom config file support — `--config-name` and `--config-key` options allow using alternative config files (e.g., `webforgeai.config.mjs` with a `devlink` key).
+
+### Changed
+- Install command refactored to use multilevel resolution and tree scanning for recursive monorepo support.
+- Staging updated to handle synthetic packages in `file:` protocol rewriting.
+
+### Removed
+- `src/installer.ts` and `src/store.ts` (dead code from pre-1.0 architecture, all functionality lives in `src/core/*`).
+
 ## [1.3.0] - 2026-02-26
 
 ### Changed

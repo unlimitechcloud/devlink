@@ -2,7 +2,7 @@
  * Tree Scanner - Discovers and classifies the complete structure of a monorepo recursively.
  *
  * Produces a tool-agnostic MonorepoTree with modules, install levels, and isolated packages.
- * Uses fs.glob (Node 22+) for workspace glob resolution.
+ * Compatible with Node 18+ (no fs.glob dependency).
  */
 
 import fs from "fs/promises";
@@ -147,9 +147,14 @@ export function classifyModule(
 // ============================================================================
 
 /**
- * Resolve workspace globs to concrete directory paths using fs.glob (Node 22+).
+ * Resolve workspace globs to concrete directory paths.
+ *
+ * Supports two common workspace glob forms:
+ * - Wildcard: "packages/*" → all direct children of packages/ with package.json
+ * - Exact: "packages/connector" → single directory if it has package.json
  *
  * Emits a warning (via console.warn) if a glob resolves to nothing, but does not throw.
+ * Compatible with Node 18+ (no fs.glob dependency).
  *
  * @param baseDir - Directory containing the package.json with workspaces
  * @param globs - Workspace glob patterns (e.g. ["packages/*", "apps/web"])
@@ -164,11 +169,24 @@ export async function resolveWorkspaceGlobs(
   for (const glob of globs) {
     const matched: string[] = [];
 
-    // Use fs.glob (Node 22+) to resolve each pattern
-    for await (const entry of fs.glob(glob, { cwd: baseDir })) {
-      const fullPath = path.resolve(baseDir, entry);
-
-      // Only include directories that contain a package.json
+    if (glob.endsWith("/*")) {
+      // Wildcard pattern: "some/path/*" → list direct children of "some/path/"
+      const parentDir = path.resolve(baseDir, glob.slice(0, -2));
+      try {
+        const entries = await fs.readdir(parentDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const fullPath = path.join(parentDir, entry.name);
+          if (await fileExists(path.join(fullPath, "package.json"))) {
+            matched.push(fullPath);
+          }
+        }
+      } catch {
+        // Parent directory doesn't exist — no matches
+      }
+    } else {
+      // Exact path pattern: "packages/connector" → single directory
+      const fullPath = path.resolve(baseDir, glob);
       if (await fileExists(path.join(fullPath, "package.json"))) {
         matched.push(fullPath);
       }
