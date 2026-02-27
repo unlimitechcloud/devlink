@@ -4,7 +4,9 @@
 
 DevLink actualmente opera en un solo nivel: carga un `devlink.config.mjs`, resuelve paquetes desde el store global (`~/.devlink`), los copia/inyecta en `node_modules` o `.devlink/` local, y ejecuta `npm install`. Este modelo funciona para proyectos simples pero no soporta monorepos multinivel donde existen sub-monorepos con sus propios workspaces, paquetes aislados fuera de globs de workspace, y configuraciones DevLink independientes en distintos niveles.
 
-Este diseño extiende DevLink con cuatro capacidades nuevas: (1) un tree scanner que descubre y clasifica la estructura completa de un monorepo recursivamente, (2) instalación multinivel que ejecuta `dev-link install` en cada nivel respetando orden y fail-fast, (3) deduplicación por symlinks entre stores padre-hijo para evitar copias redundantes del mismo paquete@versión, y (4) soporte para paquetes sintéticos que se resuelven al store pero no se instalan en `node_modules`. Además, el formato de configuración evoluciona para soportar el campo `synthetic` manteniendo compatibilidad con el formato actual.
+Este diseño extiende DevLink con cuatro capacidades nuevas: (1) un tree scanner que descubre y clasifica la estructura completa de un monorepo recursivamente, (2) instalación multinivel que ejecuta staging en la raíz, inyecta `file:` protocols de forma persistente en TODOS los `package.json` del árbol, y ejecuta `npm install` en cada nivel, (3) deduplicación por symlinks entre stores padre-hijo para evitar copias redundantes del mismo paquete@versión, y (4) soporte para paquetes sintéticos que se resuelven al store pero no se instalan en `node_modules`. Además, el formato de configuración evoluciona para soportar el campo `synthetic` manteniendo compatibilidad con el formato actual.
+
+El modelo de inyección es persistente: los `file:` protocols se escriben en todos los `package.json` del árbol (raíz, workspace members, sub-monorepo roots, sus workspace members) y NO se restauran después de `npm install`. Esto elimina el mecanismo anterior de backup/restore que era destructivo y causaba que npm limpiara paquetes DevLink en sub-monorepos. Para deployment, `devlink install --mode remote` reescribe los mismos campos con versiones de registry.
 
 El diseño se origina del spec `webforgeai install`, donde se identificó que DevLink debe absorber las responsabilidades de tree scanning e instalación multinivel en lugar de reimplementarlas en el CLI de WebForge.AI. El tree scanner se expone como comando `dev-link tree` con salida JSON para consumo por herramientas externas.
 
@@ -24,15 +26,19 @@ graph TD
     Scanner --> |"Produce"| Tree["MonorepoTree<br/>(módulos, niveles, aislados)"]
     
     MultiInstaller --> |"Usa"| Tree
-    MultiInstaller --> |"Por cada nivel"| SingleInstall["Install existente<br/>(src/commands/install.ts)"]
+    MultiInstaller --> |"Nivel raíz"| SingleInstall["Install existente<br/>(src/commands/install.ts)"]
+    MultiInstaller --> |"Niveles 2+"| NpmOnly["npm install<br/>(sin staging ni inyección)"]
     
     SingleInstall --> ConfigLoader["Config Loader<br/>(src/config.ts)"]
     SingleInstall --> Resolver["Resolver<br/>(src/core/resolver.ts)"]
     SingleInstall --> Staging["Staging<br/>(src/core/staging.ts)"]
+    SingleInstall --> Injector["Tree-Wide Injector<br/>(src/core/injector.ts)"]
+    
+    Injector --> |"Inyecta file: en TODOS<br/>los package.json"| FS
     
     ConfigLoader --> |"Formato nuevo<br/>+ backward compat"| ConfigNorm["Config Normalizer"]
     
-    Staging --> |"Filtra"| SyntheticFilter["Synthetic Filter<br/>(excluye de node_modules)"]
+    Staging --> |"Filtra"| SyntheticFilter["Synthetic Filter<br/>(excluye de inyección)"]
     
     MultiInstaller --> |"Deduplicación"| SymlinkDedup["Symlink Deduplicator<br/>(src/core/dedup.ts)"]
     SymlinkDedup --> |"Symlink a padre"| ParentStore[".devlink/ padre"]
@@ -49,6 +55,7 @@ sequenceDiagram
     participant CLI as dev-link install
     participant Scanner as Tree Scanner
     participant MI as Multi-Level Installer
+    participant Injector as Tree-Wide Injector
     participant Install as Single Install
     participant Dedup as Symlink Dedup
     participant NPM as npm install
@@ -66,33 +73,40 @@ sequenceDiagram
     Note over MI: Nivel 1 — Raíz
     MI->>Install: installPackages(root, mode)
     Install->>Install: Resolver paquetes desde store
-    Install->>Install: Stage a .devlink/ (excluir synthetic de node_modules)
-    Install->>NPM: npm install
-    NPM-->>Install: ✓
+    Install->>Install: Stage a .devlink/staging/
+
+    Note over MI: Inyección tree-wide (ANTES de npm install)
+    MI->>Injector: injectTreeWide(tree, stagedPackages, registryPackages, removeNames, syntheticPackages)
+    Injector->>Injector: Escanear TODOS los package.json del árbol
+    Injector->>Injector: Reemplazar versiones con file: protocol (paths relativos)
+    Injector->>Injector: Inyectar registry packages como versiones exactas
+    Injector->>Injector: Eliminar paquetes sin versión para el modo
+    Injector-->>MI: ✓ Inyección persistente completa
+
+    MI->>NPM: npm install (raíz — procesa todo el workspace tree)
+    NPM-->>MI: ✓
     Install-->>MI: ✓ Root instalado
 
-    Note over MI: Nivel 2 — Sub-monorepos
+    Note over MI: Nivel 2 — Sub-monorepos (solo npm install)
     loop Cada sub-monorepo
         MI->>Dedup: checkParentStore(pkg@ver, parentPath)
         alt Existe en padre
             Dedup->>Dedup: Crear symlink hijo → padre
             Dedup-->>MI: symlinked
         else No existe
-            MI->>Install: installPackages(subMonorepo, mode)
-            Install-->>MI: ✓
+            Dedup-->>MI: no dedup
         end
-        MI->>NPM: npm install (en sub-monorepo)
+        MI->>NPM: npm install (sin staging ni inyección — ya hecho en raíz)
         NPM-->>MI: ✓
     end
 
     Note over MI: Nivel 3 — Paquetes aislados
     loop Cada paquete aislado
-        MI->>Install: installPackages(isolated, mode)
-        Install->>NPM: npm install
+        MI->>NPM: npm install (independiente)
         NPM-->>MI: ✓
     end
 
-    MI-->>User: ✅ Install completo
+    MI-->>User: ✅ Install completo (file: protocols persisten en package.json)
 ```
 
 ### Flujo: `dev-link tree --json`
@@ -217,7 +231,7 @@ function scanTree(rootDir: string, options?: ScanOptions): Promise<MonorepoTree>
 
 ### Componente 2: Multi-Level Installer (`src/core/multilevel.ts`)
 
-**Propósito**: Orquestar la instalación de dependencias en cada nivel del monorepo, respetando orden y fail-fast.
+**Propósito**: Orquestar la instalación de dependencias en cada nivel del monorepo, respetando orden y fail-fast. Coordina el staging en la raíz, la inyección tree-wide de `file:` protocols en todos los `package.json` del árbol, y ejecuta `npm install` en cada nivel.
 
 **Interfaz**:
 ```typescript
@@ -251,11 +265,13 @@ async function installMultiLevel(
 ```
 
 **Responsabilidades**:
-- Ejecutar `installPackages()` en la raíz del monorepo (nivel 1)
-- Para cada sub-monorepo con config DevLink: ejecutar `installPackages()` con su config propia
-- Para cada sub-monorepo sin config DevLink: ejecutar solo `npm install`
-- Para cada paquete aislado: ejecutar `installPackages()` si tiene config, sino `npm install`
-- Antes de instalar en un nivel hijo, ejecutar deduplicación por symlinks
+- Ejecutar staging y resolución de paquetes en la raíz del monorepo (nivel 1)
+- Invocar `injectTreeWide()` para inyectar `file:` protocols en TODOS los `package.json` del árbol ANTES de ejecutar `npm install`
+- Ejecutar UN `npm install` en la raíz que procesa todo el workspace tree
+- Para cada sub-monorepo (nivel 2+): ejecutar solo `npm install` (sin staging ni inyección — ya hecho en raíz)
+- Para cada paquete aislado: ejecutar `npm install` independiente
+- Antes de instalar en un nivel hijo, ejecutar deduplicación por symlinks si tiene config DevLink
+- NO restaurar `package.json` — los `file:` protocols persisten
 - Fail-fast: si un nivel falla, no ejecutar niveles posteriores
 - Reportar progreso y duración por nivel
 
@@ -357,6 +373,67 @@ async function handleTree(options: TreeCommandOptions): Promise<void>;
 - En modo `--json`: imprimir el `MonorepoTree` como JSON a stdout
 - En modo normal: imprimir árbol visual con clasificación de módulos
 - Mostrar resumen: cantidad de módulos, niveles de instalación, paquetes aislados
+
+### Componente 6: Tree-Wide Package.json Injector (`src/core/injector.ts`)
+
+**Propósito**: Inyectar `file:` protocols de forma persistente en TODOS los `package.json` del árbol del monorepo que referencien paquetes gestionados por DevLink. Esto reemplaza el mecanismo anterior de backup/restore que solo inyectaba en el `package.json` raíz y restauraba después de `npm install`.
+
+**Interfaz**:
+```typescript
+/** Resultado de inyección para un package.json individual */
+interface InjectionResult {
+  packageJsonPath: string;     // ruta absoluta al package.json modificado
+  relativePath: string;        // ruta relativa a la raíz del monorepo
+  injectedCount: number;       // cantidad de dependencias reescritas con file:
+  removedCount: number;        // cantidad de dependencias eliminadas (sin versión para el modo)
+  registryCount: number;       // cantidad de dependencias inyectadas desde registry
+}
+
+/** Resultado global de inyección tree-wide */
+interface TreeWideInjectionResult {
+  results: InjectionResult[];  // resultado por cada package.json modificado
+  totalInjected: number;       // total de dependencias reescritas
+  totalRemoved: number;        // total de dependencias eliminadas
+  totalFiles: number;          // cantidad de package.json procesados
+}
+
+/** Opciones de inyección */
+interface InjectTreeWideOptions {
+  tree: MonorepoTree;
+  stagedPackages: StagedPackage[];       // paquetes staged con file: protocol
+  registryPackages: { name: string; version: string }[];  // paquetes de registry
+  removePackageNames: string[];          // paquetes a eliminar (sin versión para el modo)
+  syntheticPackages: Set<string>;        // paquetes sintéticos (excluir de inyección)
+  rootDir: string;                       // raíz del monorepo (donde está .devlink/staging/)
+}
+
+// Función principal
+async function injectTreeWide(
+  options: InjectTreeWideOptions
+): Promise<TreeWideInjectionResult>;
+
+// Función auxiliar: recopilar todos los package.json del árbol
+async function collectAllPackageJsonPaths(
+  tree: MonorepoTree
+): Promise<string[]>;
+```
+
+**Responsabilidades**:
+- Recopilar TODOS los `package.json` del árbol: raíz, workspace members, sub-monorepo roots, sus workspace members, paquetes aislados
+- Para cada `package.json`, verificar si alguna dependencia (`dependencies` o `devDependencies`) coincide con un paquete gestionado por DevLink
+- Reemplazar la versión de dependencias coincidentes con `file:` protocol apuntando al staging directory, usando paths relativos desde la ubicación del `package.json`
+- Inyectar paquetes de registry como versiones exactas
+- Eliminar paquetes que no tienen versión para el modo actual
+- Excluir paquetes sintéticos de la inyección (no se inyectan en `package.json`)
+- NO crear backups — los cambios son persistentes
+- Cuando se ejecuta en modo `remote` (`--mode remote`), reescribir los mismos campos con versiones de registry en lugar de `file:` protocols
+- Calcular paths relativos correctos desde cada `package.json` al directorio de staging en la raíz
+
+**Modelo de persistencia**:
+- Los `file:` protocols persisten en `package.json` y se commitean a git
+- Cada desarrollador ejecuta `devlink install` después de clonar — eso configura todo
+- Para deployment, `devlink install --mode remote` reescribe `file:` con versiones de registry
+- No existe mecanismo de backup/restore — es innecesario con este modelo
 
 ## Modelos de Datos
 
@@ -733,41 +810,41 @@ async function installMultiLevel(
   const results: LevelResult[] = [];
   const startTime = Date.now();
 
-  // Fase 1: Raíz (siempre primero)
+  // Fase 1: Raíz — staging + inyección tree-wide + npm install
   const rootLevel = tree.installLevels[0];
   assert(rootLevel.path === tree.root, "First level must be root");
 
-  const rootResult = await installAtLevel(rootLevel, mode, runNpm, runScripts, config);
+  const rootResult = await installAtLevel(rootLevel, mode, runNpm, runScripts, config, tree);
   results.push(rootResult);
   if (!rootResult.success) {
     return { levels: results, totalDuration: Date.now() - startTime, success: false };
   }
 
-  // Fase 2: Sub-monorepos (secuencial)
+  // Fase 2: Sub-monorepos — solo npm install (staging e inyección ya hechos en raíz)
   for (const level of tree.installLevels.slice(1)) {
     // Deduplicar paquetes del padre antes de instalar
     if (level.hasDevlinkConfig) {
       await deduplicateFromParent(tree.root, level.path, mode);
     }
 
-    const levelResult = await installAtLevel(level, mode, runNpm, runScripts, config);
+    // Solo ejecutar npm install — NO staging ni inyección
+    const levelResult = await runNpmAtLevel(level, runScripts);
     results.push(levelResult);
     if (!levelResult.success) {
       return { levels: results, totalDuration: Date.now() - startTime, success: false };
     }
   }
 
-  // Fase 3: Paquetes aislados (secuencial)
+  // Fase 3: Paquetes aislados — solo npm install
   for (const isoPath of tree.isolatedPackages) {
-    const isoHasConfig = await hasDevlinkConfig(isoPath);
     const isoLevel: InstallLevel = {
       path: isoPath,
       relativePath: path.relative(tree.root, isoPath),
-      hasDevlinkConfig: isoHasConfig,
+      hasDevlinkConfig: false,
       workspaces: [],
     };
 
-    const isoResult = await installAtLevel(isoLevel, mode, runNpm, runScripts, config);
+    const isoResult = await runNpmAtLevel(isoLevel, runScripts);
     results.push(isoResult);
     if (!isoResult.success) {
       return { levels: results, totalDuration: Date.now() - startTime, success: false };
@@ -777,32 +854,85 @@ async function installMultiLevel(
   return { levels: results, totalDuration: Date.now() - startTime, success: true };
 }
 
+/**
+ * Instalar en la raíz: staging + inyección tree-wide + npm install.
+ * Solo se ejecuta para el nivel raíz (installLevels[0]).
+ */
 async function installAtLevel(
   level: InstallLevel,
   mode: string,
   runNpm: boolean,
   runScripts?: boolean,
-  configOverride?: string
+  configOverride?: string,
+  tree?: MonorepoTree
 ): Promise<LevelResult> {
   const startTime = Date.now();
+  const originalCwd = process.cwd();
 
   try {
-    // Cambiar al directorio del nivel
-    const originalCwd = process.cwd();
     process.chdir(level.path);
 
     try {
       if (level.hasDevlinkConfig) {
-        // Tiene config DevLink → ejecutar install completo
+        // Tiene config DevLink → staging + inyección tree-wide + npm install
+        // installPackages ahora:
+        //   1. Resuelve paquetes desde store
+        //   2. Stage a .devlink/staging/
+        //   3. Invoca injectTreeWide() para inyectar file: en TODOS los package.json
+        //   4. Ejecuta npm install
+        //   5. NO restaura package.json (persistente)
         await installPackages({
           mode,
           runNpm,
           runScripts,
           config: configOverride,
+          tree,  // pasar el tree para inyección tree-wide
         });
       } else if (runNpm) {
-        // Sin config DevLink → solo npm install
         await runNpmInstall(runScripts);
+      }
+
+      return {
+        path: level.path,
+        relativePath: level.relativePath,
+        success: true,
+        duration: Date.now() - startTime,
+        hasDevlinkConfig: level.hasDevlinkConfig,
+      };
+    } finally {
+      process.chdir(originalCwd);
+    }
+  } catch (error: any) {
+    return {
+      path: level.path,
+      relativePath: level.relativePath,
+      success: false,
+      duration: Date.now() - startTime,
+      hasDevlinkConfig: level.hasDevlinkConfig,
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * Ejecutar solo npm install en un nivel (sin staging ni inyección).
+ * Usado para sub-monorepos y paquetes aislados donde la inyección
+ * tree-wide ya reescribió sus package.json desde la raíz.
+ */
+async function runNpmAtLevel(
+  level: InstallLevel,
+  runScripts?: boolean
+): Promise<LevelResult> {
+  const startTime = Date.now();
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir(level.path);
+
+    try {
+      const exitCode = await runNpmInstall(runScripts);
+      if (exitCode !== 0) {
+        throw new Error(`npm install exited with code ${exitCode}`);
       }
 
       return {
@@ -830,18 +960,22 @@ async function installAtLevel(
 
 **Precondiciones:**
 - `tree` es un `MonorepoTree` válido producido por `scanTree`
-- `mode` es un modo válido definido en la config
+- `mode` es un modo válido definido en la config de la raíz
 - Si `runNpm` es true, npm está disponible en PATH
+- DevLink store global (`~/.devlink`) es accesible
 
 **Postcondiciones:**
 - Si `success: true`: todas las dependencias están instaladas en todos los niveles
-- Los niveles se procesan en orden: raíz → sub-monorepos → aislados
-- Si un nivel falla, los niveles posteriores NO se ejecutan (fail-fast)
+- Los niveles se procesan en orden estricto: raíz → sub-monorepos → aislados
+- Si un nivel falla, ningún nivel posterior se ejecuta (fail-fast)
+- Los `file:` protocols persisten en TODOS los `package.json` del árbol (no se restauran)
+- Sub-monorepos y paquetes aislados solo ejecutan `npm install` (sin staging ni inyección)
 - Cada resultado incluye `duration` en milisegundos
 
 **Invariantes de Loop:**
 - Todos los niveles procesados hasta el momento fueron exitosos
 - El directorio de trabajo se restaura siempre (finally)
+- La inyección tree-wide se ejecuta exactamente una vez (en la raíz)
 
 ### Algoritmo: Deduplicación por Symlinks
 
@@ -1012,70 +1146,155 @@ function isLegacyFormat(spec: unknown): spec is PackageSpecLegacy {
 - Formato nuevo `{ version: { dev: "0.3.0" }, synthetic: true }` produce `{ versions: { dev: "0.3.0" }, synthetic: true }`
 - `detectMode` se ignora si existe
 
-### Algoritmo: Filtrado de Paquetes Sintéticos en Staging
+### Algoritmo: Inyección Tree-Wide de Package.json
 
 ```typescript
-// Modificación a stageAndRelink() en src/core/staging.ts
-async function stageAndRelink(
-  projectPath: string,
-  resolvedPackages: ResolvedPackage[],
-  syntheticPackages?: Set<string>  // NUEVO parámetro
-): Promise<StagingResult> {
-  const stagingDir = path.join(projectPath, STAGING_DIR);
-  const result: StagingResult = { staged: [], relinked: [] };
+/**
+ * Recopilar TODOS los package.json del árbol del monorepo.
+ * Incluye: raíz, workspace members, sub-monorepo roots, sus workspace members, paquetes aislados.
+ */
+async function collectAllPackageJsonPaths(
+  tree: MonorepoTree
+): Promise<string[]> {
+  const paths: string[] = [];
 
-  await fs.rm(stagingDir, { recursive: true, force: true });
-  await fs.mkdir(stagingDir, { recursive: true });
+  // Raíz
+  paths.push(path.join(tree.root, "package.json"));
 
-  // Copiar TODOS los paquetes al staging (incluyendo sintéticos)
-  for (const pkg of resolvedPackages) {
-    const destPath = path.join(stagingDir, pkg.name, pkg.version);
-    await copyDir(pkg.path!, destPath);
-    result.staged.push({
-      name: pkg.name,
-      version: pkg.version,
-      namespace: pkg.namespace!,
-      stagingPath: destPath,
-    });
+  // Recorrer módulos recursivamente
+  function collectFromModules(modules: MonorepoModule[]) {
+    for (const mod of modules) {
+      paths.push(path.join(mod.path, "package.json"));
+      if (mod.children.length > 0) {
+        collectFromModules(mod.children);
+      }
+    }
   }
 
-  // Re-link internal deps (sin cambios)
-  // ... (código existente de re-linking)
-
-  return result;
+  collectFromModules(tree.modules);
+  return paths;
 }
 
-// Modificación a injectStagedPackages() en src/commands/install.ts
-async function injectStagedPackages(
-  projectPath: string,
-  stagedPackages: StagedPackage[],
-  removePackageNames: string[] = [],
-  registryPackages: { name: string; version: string }[] = [],
-  syntheticPackages?: Set<string>  // NUEVO parámetro
-): Promise<PackageJsonBackup> {
-  // ... (código existente)
+/**
+ * Inyectar file: protocols de forma persistente en TODOS los package.json del árbol.
+ * No crea backups — los cambios persisten en disco y se commitean a git.
+ */
+async function injectTreeWide(
+  options: InjectTreeWideOptions
+): Promise<TreeWideInjectionResult> {
+  const {
+    tree, stagedPackages, registryPackages,
+    removePackageNames, syntheticPackages, rootDir
+  } = options;
 
-  // Inyectar store packages como file: protocol
-  // PERO excluir paquetes sintéticos
+  const packageJsonPaths = await collectAllPackageJsonPaths(tree);
+  const results: InjectionResult[] = [];
+  let totalInjected = 0;
+  let totalRemoved = 0;
+
+  // Construir mapa de paquetes staged: nombre → stagingPath absoluto
+  const stagedMap = new Map<string, string>();
   for (const pkg of stagedPackages) {
-    if (syntheticPackages?.has(pkg.name)) continue;  // NUEVO: skip synthetic
-    const relativePath = path.relative(projectPath, pkg.stagingPath);
-    manifest.dependencies[pkg.name] = `file:${relativePath}`;
+    if (syntheticPackages.has(pkg.name)) continue;  // Excluir sintéticos
+    stagedMap.set(pkg.name, pkg.stagingPath);
   }
 
-  // ... (resto sin cambios)
+  // Construir mapa de paquetes registry: nombre → versión
+  const registryMap = new Map<string, string>();
+  for (const pkg of registryPackages) {
+    registryMap.set(pkg.name, pkg.version);
+  }
+
+  // Construir set de paquetes a eliminar
+  const removeSet = new Set(removePackageNames);
+
+  for (const pkgJsonPath of packageJsonPaths) {
+    let content: string;
+    try {
+      content = await fs.readFile(pkgJsonPath, "utf-8");
+    } catch {
+      continue;  // package.json no existe o no es legible, skip
+    }
+
+    const manifest = JSON.parse(content);
+    const pkgDir = path.dirname(pkgJsonPath);
+    let injected = 0;
+    let removed = 0;
+    let registry = 0;
+
+    // Procesar dependencies y devDependencies
+    for (const depField of ["dependencies", "devDependencies"]) {
+      const deps = manifest[depField];
+      if (!deps || typeof deps !== "object") continue;
+
+      for (const depName of Object.keys(deps)) {
+        // Inyectar file: protocol para paquetes staged
+        if (stagedMap.has(depName)) {
+          const stagingPath = stagedMap.get(depName)!;
+          const relativePath = path.relative(pkgDir, stagingPath);
+          deps[depName] = `file:${relativePath}`;
+          injected++;
+          continue;
+        }
+
+        // Inyectar versión exacta para paquetes de registry
+        if (registryMap.has(depName)) {
+          deps[depName] = registryMap.get(depName)!;
+          registry++;
+          continue;
+        }
+
+        // Eliminar paquetes sin versión para el modo actual
+        if (removeSet.has(depName)) {
+          delete deps[depName];
+          removed++;
+        }
+      }
+    }
+
+    // Solo escribir si hubo cambios
+    if (injected > 0 || removed > 0 || registry > 0) {
+      await fs.writeFile(pkgJsonPath, JSON.stringify(manifest, null, 2) + "\n");
+      totalInjected += injected;
+      totalRemoved += removed;
+
+      results.push({
+        packageJsonPath: pkgJsonPath,
+        relativePath: path.relative(rootDir, pkgJsonPath),
+        injectedCount: injected,
+        removedCount: removed,
+        registryCount: registry,
+      });
+    }
+  }
+
+  return {
+    results,
+    totalInjected,
+    totalRemoved,
+    totalFiles: results.length,
+  };
 }
 ```
 
 **Precondiciones:**
-- `syntheticPackages` es un Set de nombres de paquetes marcados como `synthetic: true`
-- Los paquetes sintéticos ya fueron resueltos y existen en el store
+- `tree` es un `MonorepoTree` válido producido por `scanTree`
+- `stagedPackages` contiene paquetes ya copiados a `.devlink/staging/` con paths absolutos
+- `rootDir` es la raíz del monorepo donde reside `.devlink/staging/`
+- Los `package.json` del árbol son legibles y escribibles
 
 **Postcondiciones:**
-- Los paquetes sintéticos SÍ se copian a `.devlink/` (staging)
-- Los paquetes sintéticos NO se inyectan en `package.json` como `file:` deps
-- Los paquetes sintéticos NO aparecen en `node_modules` después de `npm install`
-- Los paquetes no-sintéticos se comportan exactamente como antes
+- Para cada `package.json` del árbol que referencia un paquete gestionado por DevLink: el campo de versión se reescribe con `file:` protocol usando path relativo al staging
+- Los paquetes sintéticos NO se inyectan en ningún `package.json`
+- Los paquetes de registry se inyectan como versiones exactas
+- Los paquetes sin versión para el modo actual se eliminan de `dependencies` y `devDependencies`
+- Solo se escriben archivos que tuvieron cambios efectivos
+- NO se crean backups — los cambios son persistentes
+- Los paths relativos son correctos desde cada `package.json` individual al staging directory
+
+**Invariantes de Loop:**
+- Cada `package.json` se procesa exactamente una vez
+- Los paths relativos se calculan desde el directorio del `package.json`, no desde la raíz
 
 ## Funciones Clave con Especificaciones Formales
 
@@ -1111,7 +1330,7 @@ async function installMultiLevel(options: MultiLevelInstallOptions): Promise<Mul
 
 **Precondiciones:**
 - `options.tree` es un `MonorepoTree` válido producido por `scanTree`
-- `options.mode` es un modo válido definido en al menos una config del árbol
+- `options.mode` es un modo válido definido en la config de la raíz
 - Si `options.runNpm` es true, npm está disponible en PATH
 - DevLink store global (`~/.devlink`) es accesible
 
@@ -1122,10 +1341,13 @@ async function installMultiLevel(options: MultiLevelInstallOptions): Promise<Mul
 - `result.levels.length` es igual al número de niveles procesados (incluyendo el que falló)
 - Cada `LevelResult` incluye `duration` en milisegundos
 - El directorio de trabajo se restaura al original después de cada nivel (incluso en caso de error)
+- Los `file:` protocols persisten en TODOS los `package.json` del árbol (no se restauran)
+- Sub-monorepos y paquetes aislados solo ejecutan `npm install` (sin staging ni inyección)
 
 **Invariantes de Loop:**
 - Todos los niveles procesados hasta el momento fueron exitosos (excepto posiblemente el último)
 - `process.cwd()` se restaura al valor original después de cada iteración
+- La inyección tree-wide se ejecuta exactamente una vez (en la raíz)
 
 ### Función 3: `deduplicatePackages(options)`
 
@@ -1178,6 +1400,28 @@ async function handleTree(options: TreeCommandOptions): Promise<void>
 - Si no `--json`: stdout contiene representación visual del árbol con tipo y ruta de cada módulo
 - stderr se usa para mensajes de error (no contamina stdout en modo JSON)
 
+### Función 6: `injectTreeWide(options)`
+
+```typescript
+async function injectTreeWide(options: InjectTreeWideOptions): Promise<TreeWideInjectionResult>
+```
+
+**Precondiciones:**
+- `options.tree` es un `MonorepoTree` válido producido por `scanTree`
+- `options.stagedPackages` contiene paquetes ya copiados a `.devlink/staging/` con paths absolutos válidos
+- `options.rootDir` es la raíz del monorepo donde reside `.devlink/staging/`
+- Los `package.json` del árbol son legibles y escribibles
+
+**Postcondiciones:**
+- Para cada `package.json` del árbol que referencia un paquete gestionado por DevLink en `dependencies` o `devDependencies`: el campo de versión se reescribe con `file:` protocol usando path relativo al staging
+- Los paquetes sintéticos NO se inyectan en ningún `package.json`
+- Los paquetes de registry se inyectan como versiones exactas
+- Los paquetes sin versión para el modo actual se eliminan de `dependencies` y `devDependencies`
+- Solo se escriben archivos que tuvieron cambios efectivos
+- NO se crean backups — los cambios son persistentes
+- `result.totalFiles` es igual al número de `package.json` que fueron modificados
+- Los paths relativos son correctos desde cada `package.json` individual al staging directory
+
 ## Ejemplo de Uso
 
 ```typescript
@@ -1211,8 +1455,9 @@ async function handleTree(options: TreeCommandOptions): Promise<void>
 //   Found 4 install levels, 1 isolated package
 //
 // ── Level 1: . (root, devlink config: ✓) ──
-//   📦 Staging 10 packages to .devlink/...
+//   📦 Staging 10 packages to .devlink/staging/...
 //   🔗 1 synthetic package (store-only): @webforgeai/sst
+//   📝 Tree-wide injection: 15 dependencies in 8 package.json files
 //   ✓ npm install complete (12.3s)
 //
 // ── Level 2: packages/services/web (sub-monorepo) ──
@@ -1230,6 +1475,7 @@ async function handleTree(options: TreeCommandOptions): Promise<void>
 //   ✓ npm install complete (8.7s)
 //
 // ✅ Install complete (26.4s)
+// ℹ️  file: protocols persist in all package.json files
 
 // Ejemplo 4: Config con paquetes sintéticos (formato nuevo)
 // devlink.config.mjs
@@ -1352,6 +1598,24 @@ export default {
 
 **Valida: Requisitos 6.1, 6.4**
 
+### Propiedad 16: Persistencia de inyección tree-wide en package.json
+
+*Para cualquier* paquete gestionado por DevLink que aparezca como dependencia en cualquier `package.json` del árbol (raíz, workspace members, sub-monorepo roots, sus workspace members), después de `dev-link install`, ese campo debe contener un `file:` protocol apuntando al staging directory con un path relativo válido. Los `file:` protocols NO se restauran — persisten en disco como parte del workflow gestionado.
+
+**Valida: Requisitos 2.1, 2.2**
+
+### Propiedad 17: Exclusión de paquetes sintéticos en inyección tree-wide
+
+*Para cualquier* paquete marcado con `synthetic: true` en la configuración, la inyección tree-wide NO debe reescribir su versión en ningún `package.json` del árbol con `file:` protocol. El paquete debe existir en `.devlink/staging/` pero no ser inyectado.
+
+**Valida: Requisitos 4.3**
+
+### Propiedad 18: Correctitud de paths relativos en inyección tree-wide
+
+*Para cualquier* `package.json` del árbol que fue inyectado con `file:` protocol, el path relativo debe resolver correctamente desde el directorio del `package.json` al directorio del paquete en `.devlink/staging/` de la raíz. Es decir, `path.resolve(pkgDir, fileProtocolPath)` debe apuntar a un directorio existente en staging.
+
+**Valida: Requisitos 2.1**
+
 ## Manejo de Errores
 
 ### Error 1: package.json no encontrado en raíz
@@ -1369,8 +1633,8 @@ export default {
 ### Error 3: Fallo de npm install en un nivel
 
 **Condición**: `npm install` retorna exit code != 0 en algún nivel.
-**Respuesta**: Mostrar el error de npm, el nivel afectado, y detener la ejecución (fail-fast).
-**Recuperación**: El usuario resuelve el error de npm y re-ejecuta.
+**Respuesta**: Mostrar el error de npm, el nivel afectado, y detener la ejecución (fail-fast). Los `file:` protocols ya inyectados persisten en los `package.json` (no se revierten).
+**Recuperación**: El usuario resuelve el error de npm y re-ejecuta `devlink install`.
 
 ### Error 4: Symlink falla por permisos
 
@@ -1390,6 +1654,24 @@ export default {
 **Respuesta**: Error indicando los modos disponibles en la config.
 **Recuperación**: El usuario usa un modo válido o agrega la factory al config.
 
+### Error 7: Workspace member referencia paquete no gestionado por DevLink
+
+**Condición**: Un `package.json` de un workspace member declara una dependencia que coincide en nombre con un paquete DevLink pero no está en la config.
+**Respuesta**: No es un error — la inyección tree-wide solo procesa paquetes que están en la config de DevLink. Las dependencias no gestionadas se dejan intactas para que npm las resuelva normalmente.
+**Recuperación**: N/A — comportamiento esperado.
+
+### Error 8: Staging directory no existe cuando sub-monorepo ejecuta npm install
+
+**Condición**: Un sub-monorepo tiene `file:` protocols en su `package.json` apuntando al staging directory de la raíz, pero el staging no existe (ej: se ejecutó `npm install` manualmente sin `devlink install` previo).
+**Respuesta**: npm falla con error `ENOENT` al intentar resolver el `file:` protocol.
+**Recuperación**: El usuario ejecuta `devlink install --recursive --npm` desde la raíz para regenerar el staging y re-inyectar los `file:` protocols.
+
+### Error 9: package.json no escribible durante inyección tree-wide
+
+**Condición**: Un `package.json` del árbol no tiene permisos de escritura.
+**Respuesta**: Error indicando el path del `package.json` que no se pudo escribir.
+**Recuperación**: El usuario corrige los permisos del archivo y re-ejecuta.
+
 ## Estrategia de Testing
 
 ### Unit Testing
@@ -1398,6 +1680,7 @@ export default {
 - **Config Normalizer**: Validar parsing de formato nuevo, formato legacy, detección de formato, rechazo de formatos inválidos, extracción de mode factories.
 - **Symlink Deduplicator**: Validar creación de symlinks cuando existe en padre, no-op cuando no existe, manejo de scoped packages, fallback a copia en error.
 - **Module Classifier**: Validar heurísticas de clasificación por scripts, paths, nombres.
+- **Tree-Wide Injector**: Validar inyección de `file:` protocols en múltiples `package.json`, cálculo de paths relativos correctos, exclusión de paquetes sintéticos, idempotencia de inyección.
 
 ### Property-Based Testing
 
@@ -1406,12 +1689,15 @@ export default {
 - **Propiedad 1**: Para cualquier árbol de monorepo válido generado, `scanTree` produce un `MonorepoTree` donde `installLevels[0].path === rootDir`.
 - **Propiedad 2**: Para cualquier config con formato legacy, `normalizeConfig` produce el mismo resultado que el equivalente en formato nuevo.
 - **Propiedad 3**: Para cualquier conjunto de paquetes, la deduplicación nunca crea symlinks entre siblings.
+- **Propiedad 4**: Para cualquier árbol de monorepo y conjunto de paquetes staged, `injectTreeWide` produce paths relativos que resuelven correctamente al staging directory desde cada `package.json`.
 
 ### Integration Testing
 
 - Test end-to-end con fixture de monorepo mínimo que simula la estructura HCAMSWS (raíz + sub-monorepos + paquete aislado).
 - Verificar que `dev-link tree --json` produce JSON parseable con todos los módulos.
 - Verificar que `dev-link install --recursive` procesa niveles en orden correcto.
+- Verificar que después de `devlink install`, TODOS los `package.json` del árbol que referencian paquetes DevLink tienen `file:` protocols con paths relativos válidos.
+- Verificar que los `file:` protocols persisten después de la ejecución (no se restauran).
 - Verificar que paquetes sintéticos están en `.devlink/` pero no en `node_modules/`.
 - Verificar deduplicación: symlink existe en hijo apuntando a padre.
 
@@ -1445,8 +1731,9 @@ export default {
 | Archivo | Propósito |
 |---------|-----------|
 | `src/core/tree.ts` | Tree scanner (scanTree, classifyModule, resolveWorkspaceGlobs) |
-| `src/core/multilevel.ts` | Multi-level installer (installMultiLevel, installAtLevel) |
+| `src/core/multilevel.ts` | Multi-level installer (installMultiLevel, installAtLevel, runNpmAtLevel) |
 | `src/core/dedup.ts` | Symlink deduplicator (deduplicatePackages, findNearestParentStore) |
+| `src/core/injector.ts` | Tree-wide package.json injector (injectTreeWide, collectAllPackageJsonPaths) |
 | `src/commands/tree.ts` | Tree command handler (handleTree) |
 
 ### Archivos Modificados
@@ -1455,7 +1742,8 @@ export default {
 |---------|--------|
 | `src/cli.ts` | Agregar comando `tree` y flag `--recursive` a `install` |
 | `src/config.ts` | Agregar `normalizeConfig`, `isNewFormat`, `isLegacyFormat` |
-| `src/types.ts` | Agregar tipos MonorepoTree, MonorepoModule, InstallLevel, etc. |
+| `src/types.ts` | Agregar tipos MonorepoTree, MonorepoModule, InstallLevel, InjectTreeWideOptions, TreeWideInjectionResult, InjectionResult, etc. |
 | `src/core/staging.ts` | Agregar parámetro `syntheticPackages` a `stageAndRelink` |
-| `src/commands/install.ts` | Integrar `installMultiLevel` cuando `--recursive`, filtrar sintéticos |
+| `src/commands/install.ts` | Eliminar `restorePackageJson`, `PackageJsonBackup`, `deduplicateWorkspaceMembers`, signal handlers de backup. Integrar `injectTreeWide` para inyección persistente tree-wide. Aceptar `tree` en `InstallOptions` para pasar al injector. Eliminar bloque `finally` que restauraba `package.json` |
 | `src/commands/index.ts` | Re-exportar `handleTree` |
+| `src/core/multilevel.ts` | Sub-monorepos y paquetes aislados solo ejecutan `npm install` (sin staging ni inyección). Agregar `runNpmAtLevel`. Pasar `tree` a `installPackages` en nivel raíz |

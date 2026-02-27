@@ -32,7 +32,7 @@ export interface RelinkDetail {
   dep: string;
   /** Original value (e.g., "^0.1.0") */
   from: string;
-  /** Rewritten value (e.g., "file:../../@webforgeai/core/0.1.0") */
+  /** Rewritten value (e.g., "file:../../@webforgeai/core") */
   to: string;
 }
 
@@ -59,13 +59,14 @@ async function copyDir(src: string, dest: string): Promise<void> {
  * Copy resolved packages to local staging and rewrite internal dependencies.
  *
  * 1. Clean .devlink/ if exists
- * 2. Copy each resolved package from store to .devlink/{name}/{version}/
+ * 2. Copy each resolved package from store to .devlink/{name}/
  * 3. Build index of packages available in staging
  * 4. For each package, rewrite internal deps to file: relative paths
  */
 export async function stageAndRelink(
   projectPath: string,
-  resolvedPackages: ResolvedPackage[]
+  resolvedPackages: ResolvedPackage[],
+  syntheticPackages?: Set<string>
 ): Promise<StagingResult> {
   const stagingDir = path.join(projectPath, STAGING_DIR);
   const result: StagingResult = { staged: [], relinked: [] };
@@ -76,7 +77,7 @@ export async function stageAndRelink(
 
   // 2. Copy packages from store to staging
   for (const pkg of resolvedPackages) {
-    const destPath = path.join(stagingDir, pkg.name, pkg.version);
+    const destPath = path.join(stagingDir, pkg.name);
     await copyDir(pkg.path!, destPath);
     result.staged.push({
       name: pkg.name,

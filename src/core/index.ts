@@ -7,3 +7,5 @@ export * from "./registry.js";
 export * from "./installations.js";
 export * from "./store.js";
 export * from "./resolver.js";
+export * from "./tree.js";
+export * from "./multilevel.js";

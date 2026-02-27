@@ -9,14 +9,16 @@ import type {
   FactoryContext,
   ModeConfig,
   ModeFactory,
-  PackageVersions,
+  NormalizedConfig,
+  NormalizedPackageSpec,
+  PackageSpecNew,
 } from "./types.js";
 
 /**
  * Crea el contexto para las factories
  */
 export function createContext(
-  packages: Record<string, PackageVersions>
+  packages: Record<string, PackageSpecNew>
 ): FactoryContext {
   return {
     env: process.env,
@@ -24,26 +26,6 @@ export function createContext(
     cwd: process.cwd(),
     packages,
   };
-}
-
-/**
- * Detecta el modo basado en la configuración o defaults
- */
-export function detectMode(
-  config: DevLinkConfig,
-  ctx: FactoryContext
-): string {
-  if (config.detectMode) {
-    return config.detectMode(ctx);
-  }
-
-  // Detección por defecto
-  if (ctx.env.SST_LOCAL === "true") return "dev";
-  if (ctx.env.NODE_ENV === "development") return "dev";
-  if (ctx.args.includes("--dev")) return "dev";
-  if (ctx.args.includes("--mode=dev")) return "dev";
-
-  return "prod";
 }
 
 /**
@@ -80,8 +62,12 @@ export async function loadConfig(configPath: string): Promise<{
   // Crear contexto
   const ctx = createContext(config.packages);
 
-  // Detectar modo
-  const mode = detectMode(config, ctx);
+  // Detectar modo por defecto
+  let mode = "dev";
+  if (ctx.env.SST_LOCAL === "true") mode = "dev";
+  else if (ctx.env.NODE_ENV === "development") mode = "dev";
+  else if (ctx.args.includes("--dev")) mode = "dev";
+  else if (ctx.args.includes("--mode=dev")) mode = "dev";
 
   // Obtener configuración del modo
   const modeFactory = config[mode] as ModeFactory | undefined;
@@ -91,4 +77,52 @@ export async function loadConfig(configPath: string): Promise<{
   const modeConfig = modeFactory(ctx);
 
   return { config, ctx, mode, modeConfig };
+}
+
+/**
+ * Detects if a package spec uses the new format: { version: { mode: "ver" }, synthetic?: boolean }
+ */
+export function isNewFormat(spec: unknown): spec is PackageSpecNew {
+  return (
+    typeof spec === "object" &&
+    spec !== null &&
+    !Array.isArray(spec) &&
+    "version" in spec &&
+    typeof (spec as any).version === "object" &&
+    (spec as any).version !== null &&
+    !Array.isArray((spec as any).version)
+  );
+}
+
+/**
+ * Normalizes a raw DevLinkConfig into a unified NormalizedConfig.
+ *
+ * Format: { version: { dev: "0.3.0" }, synthetic?: true }
+ */
+export function normalizeConfig(raw: DevLinkConfig): NormalizedConfig {
+  const packages: Record<string, NormalizedPackageSpec> = {};
+
+  for (const [pkgName, spec] of Object.entries(raw.packages)) {
+    if (isNewFormat(spec)) {
+      packages[pkgName] = {
+        versions: spec.version,
+        synthetic: spec.synthetic ?? false,
+      };
+    } else {
+      throw new Error(
+        `Unrecognized config format for package "${pkgName}": expected { version: { mode: "ver" } }`
+      );
+    }
+  }
+
+  // Extract mode factories: top-level functions excluding reserved keys
+  const modes: Record<string, ModeFactory> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (key === "packages") continue;
+    if (typeof value === "function") {
+      modes[key] = value as ModeFactory;
+    }
+  }
+
+  return { packages, modes };
 }

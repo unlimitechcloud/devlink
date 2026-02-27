@@ -11,3 +11,4 @@ export * from "./consumers.js";
 export * from "./remove.js";
 export * from "./verify.js";
 export * from "./prune.js";
+export * from "./tree.js";

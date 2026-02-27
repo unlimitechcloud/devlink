@@ -3,6 +3,9 @@
  *
  * Tests for stageAndRelink (copy + rewrite internal deps to file: paths),
  * and for the inject/restore package.json logic.
+ *
+ * Staging layout: .devlink/{name}/ (flat, no version subdirectory).
+ * Only one version per package can exist in staging at a time.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -31,6 +34,7 @@ describe("staging", () => {
 
   /**
    * Helper: create a fake package in the "store" directory.
+   * Store layout still uses version subdirectories (namespaces/ns/pkg/version/).
    * Returns the absolute path to the package directory.
    */
   async function createStorePackage(
@@ -89,15 +93,15 @@ describe("staging", () => {
 
     const result = await stageAndRelink(projectDir, resolved);
 
-    // Verify staging directory structure
+    // Verify staging directory structure (flat: no version subdirectory)
     const coreManifest = path.join(
-      projectDir, STAGING_DIR, "@test/core", "1.0.0", "package.json"
+      projectDir, STAGING_DIR, "@test/core", "package.json"
     );
     const utilsManifest = path.join(
-      projectDir, STAGING_DIR, "@test/utils", "1.0.0", "package.json"
+      projectDir, STAGING_DIR, "@test/utils", "package.json"
     );
     const coreDist = path.join(
-      projectDir, STAGING_DIR, "@test/core", "1.0.0", "dist", "index.js"
+      projectDir, STAGING_DIR, "@test/core", "dist", "index.js"
     );
 
     await expect(fs.access(coreManifest)).resolves.not.toThrow();
@@ -127,25 +131,24 @@ describe("staging", () => {
 
     // Read the relinked http package.json
     const httpManifestPath = path.join(
-      projectDir, STAGING_DIR, "@test/http", "1.0.0", "package.json"
+      projectDir, STAGING_DIR, "@test/http", "package.json"
     );
     const httpManifest = JSON.parse(await fs.readFile(httpManifestPath, "utf-8"));
 
     expect(httpManifest.dependencies["@test/core"]).toMatch(/^file:/);
-    // The relative path goes from @test/http/1.0.0 → ../../core/1.0.0
+    // The relative path goes from @test/http → ../core
     // (since @test/ is the shared scope directory)
     expect(httpManifest.dependencies["@test/core"]).toContain("core");
-    expect(httpManifest.dependencies["@test/core"]).toContain("1.0.0");
     // Verify the path is actually valid by checking it resolves correctly
     const httpStagingPath = path.join(
-      projectDir, STAGING_DIR, "@test/http", "1.0.0"
+      projectDir, STAGING_DIR, "@test/http"
     );
     const resolvedDepPath = path.resolve(
       httpStagingPath,
       httpManifest.dependencies["@test/core"].replace("file:", "")
     );
     const expectedCorePath = path.join(
-      projectDir, STAGING_DIR, "@test/core", "1.0.0"
+      projectDir, STAGING_DIR, "@test/core"
     );
     expect(resolvedDepPath).toBe(expectedCorePath);
 
@@ -173,7 +176,7 @@ describe("staging", () => {
     const result = await stageAndRelink(projectDir, resolved);
 
     const coreManifestPath = path.join(
-      projectDir, STAGING_DIR, "@test/core", "1.0.0", "package.json"
+      projectDir, STAGING_DIR, "@test/core", "package.json"
     );
     const coreManifest = JSON.parse(await fs.readFile(coreManifestPath, "utf-8"));
 
@@ -207,7 +210,7 @@ describe("staging", () => {
 
     // Cross-namespace dep should be relinked
     const httpManifestPath = path.join(
-      projectDir, STAGING_DIR, "@test/http", "1.0.0", "package.json"
+      projectDir, STAGING_DIR, "@test/http", "package.json"
     );
     const httpManifest = JSON.parse(await fs.readFile(httpManifestPath, "utf-8"));
     expect(httpManifest.dependencies["@test/core"]).toMatch(/^file:/);
@@ -217,9 +220,11 @@ describe("staging", () => {
   });
 
   // =========================================================================
-  // Test 5: stageAndRelink uses semver.maxSatisfying to resolve ranges
+  // Test 5: stageAndRelink with multiple versions — last one wins in staging
   // =========================================================================
-  it("uses semver.maxSatisfying to select best version", async () => {
+  it("last resolved version wins in flat staging layout", async () => {
+    // With flat layout (.devlink/{name}/), only one version per package
+    // can exist. When multiple versions are resolved, the last one overwrites.
     const core100Path = await createStorePackage("@test/core", "1.0.0");
     const core120Path = await createStorePackage("@test/core", "1.2.0");
     const httpPath = await createStorePackage("@test/http", "1.0.0", {
@@ -234,16 +239,20 @@ describe("staging", () => {
 
     const result = await stageAndRelink(projectDir, resolved);
 
+    // The staged @test/core should contain the last version (1.2.0)
+    const coreManifestPath = path.join(
+      projectDir, STAGING_DIR, "@test/core", "package.json"
+    );
+    const coreManifest = JSON.parse(await fs.readFile(coreManifestPath, "utf-8"));
+    expect(coreManifest.version).toBe("1.2.0");
+
+    // http's dep on @test/core should be relinked to the staging path
     const httpManifestPath = path.join(
-      projectDir, STAGING_DIR, "@test/http", "1.0.0", "package.json"
+      projectDir, STAGING_DIR, "@test/http", "package.json"
     );
     const httpManifest = JSON.parse(await fs.readFile(httpManifestPath, "utf-8"));
-
-    // Should point to 1.2.0 (maxSatisfying of ^1.0.0 with [1.0.0, 1.2.0])
-    expect(httpManifest.dependencies["@test/core"]).toContain("1.2.0");
-    expect(httpManifest.dependencies["@test/core"]).not.toContain(
-      path.join("1.0.0", "")
-    );
+    expect(httpManifest.dependencies["@test/core"]).toMatch(/^file:/);
+    expect(httpManifest.dependencies["@test/core"]).toContain("core");
   });
 
   // =========================================================================
@@ -267,7 +276,7 @@ describe("staging", () => {
     const result = await stageAndRelink(projectDir, resolved);
 
     const httpManifestPath = path.join(
-      projectDir, STAGING_DIR, "@test/http", "1.0.0", "package.json"
+      projectDir, STAGING_DIR, "@test/http", "package.json"
     );
     const httpManifest = JSON.parse(await fs.readFile(httpManifestPath, "utf-8"));
 
@@ -290,13 +299,13 @@ describe("staging", () => {
     const pkgJsonPath = path.join(projectDir, "package.json");
     await fs.writeFile(pkgJsonPath, JSON.stringify(originalManifest, null, 2));
 
-    // Simulate staged packages
+    // Simulate staged packages (flat layout, no version subdirectory)
     const stagedPkgs = [
       {
         name: "@test/core",
         version: "1.0.0",
         namespace: "global",
-        stagingPath: path.join(projectDir, STAGING_DIR, "@test/core", "1.0.0"),
+        stagingPath: path.join(projectDir, STAGING_DIR, "@test/core"),
       },
     ];
 
@@ -314,7 +323,7 @@ describe("staging", () => {
     const injected = JSON.parse(await fs.readFile(pkgJsonPath, "utf-8"));
     expect(injected.dependencies["express"]).toBe("^4.18.0");
     expect(injected.dependencies["@test/core"]).toBe(
-      `file:${STAGING_DIR}/@test/core/1.0.0`
+      `file:${STAGING_DIR}/@test/core`
     );
   });
 

@@ -19,6 +19,7 @@ import {
   handleRemove,
   handleVerify,
   handlePrune,
+  handleTree,
 } from "./commands/index.js";
 import { handleDocs } from "./commands/docs.js";
 import { setRepoPath, DEFAULT_NAMESPACE } from "./constants.js";
@@ -41,6 +42,7 @@ const COMMAND_DOCS: Record<string, string> = {
   remove: "maintenance/remove",
   verify: "maintenance/verify",
   prune: "maintenance/prune",
+  tree: "inspection/tree",
   docs: "agents",
 };
 
@@ -102,22 +104,58 @@ program
   .command("install")
   .description("Install packages from the store into a project")
   .option("-c, --config <path>", "Path to config file")
+  .option("--config-name <filename>", "Config file name to search for at every level (e.g. webforgeai.config.mjs)")
+  .option("--config-key <key>", "Key within the config export to extract DevLink config from (e.g. devlink)")
   .option("-n, --namespaces <list>", "Override namespace precedence (comma-separated)", commaSeparated)
   .option("-m, --mode <name>", "Set install mode (matches config mode name, e.g. dev, remote)")
   .option("--dev", "Force dev mode (shorthand for --mode=dev)")
   .option("--prod", "Force prod mode (shorthand for --mode=prod)")
   .option("--npm", "Run npm install before DevLink installs packages")
   .option("--run-scripts", "Allow npm scripts to run (default: scripts disabled)")
+  .option("-r, --recursive", "Install recursively across all monorepo levels")
   .action(async (opts) => {
-    await handleInstall({
-      config: opts.config,
-      mode: opts.mode,
-      dev: opts.dev,
-      prod: opts.prod,
-      namespaces: opts.namespaces,
-      npm: opts.npm,
-      runScripts: opts.runScripts,
-    });
+    if (opts.recursive) {
+      // Recursive mode: use multi-level installer
+      const { scanTree } = await import("./core/tree.js");
+      const { installMultiLevel } = await import("./core/multilevel.js");
+
+      const mode = opts.mode || (opts.prod ? "prod" : opts.dev ? "dev" : "dev");
+
+      console.log(`📂 Scanning monorepo...`);
+      const tree = await scanTree(process.cwd());
+      console.log(`  Found ${tree.installLevels.length} install levels, ${tree.isolatedPackages.length} isolated package(s)`);
+
+      try {
+        const result = await installMultiLevel({
+          tree,
+          mode,
+          runNpm: opts.npm ?? false,
+          runScripts: opts.runScripts,
+          config: opts.config,
+          configName: opts.configName,
+          configKey: opts.configKey,
+        });
+
+        if (!result.success) {
+          process.exit(1);
+        }
+      } catch (error: any) {
+        console.error(`\n✗ Recursive install failed: ${error.message}`);
+        process.exit(1);
+      }
+    } else {
+      await handleInstall({
+        config: opts.config,
+        mode: opts.mode,
+        dev: opts.dev,
+        prod: opts.prod,
+        namespaces: opts.namespaces,
+        npm: opts.npm,
+        runScripts: opts.runScripts,
+        configName: opts.configName,
+        configKey: opts.configKey,
+      });
+    }
   });
 
 // ── list ──────────────────────────────────────────────────────────────────────
@@ -215,6 +253,19 @@ program
       namespace: opts.namespace,
       dryRun: opts.dryRun,
     });
+  });
+
+// ── tree ───────────────────────────────────────────────────────────────────
+
+program
+  .command("tree")
+  .description("Display monorepo structure")
+  .option("--json", "Output as JSON for tool consumption")
+  .option("--depth <n>", "Maximum scan depth", parseInt)
+  .option("--config-name <filename>", "Config file name to detect (e.g. webforgeai.config.mjs)")
+  .option("--config-key <key>", "Key within the config export to extract DevLink config from (e.g. devlink)")
+  .action(async (opts) => {
+    await handleTree({ json: opts.json, depth: opts.depth });
   });
 
 // ── docs ──────────────────────────────────────────────────────────────────────

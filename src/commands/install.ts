@@ -1,11 +1,17 @@
 /**
  * Install Command - Instalar paquetes desde el store
+ *
+ * DevLink operates at the monorepo root only:
+ * - Staging: copies packages from store to .devlink/
+ * - Injection: rewrites root package.json with file: protocols
+ * - npm install: resolves everything, hoists to root/node_modules
+ * - Workspace members resolve DevLink packages by Node walk-up
  */
 
 import fs from "fs/promises";
 import path from "path";
 import { spawn } from "child_process";
-import type { DevLinkConfig, ModeConfig, ModeFactory, ResolvedPackage, Lockfile, InstalledPackage } from "../types.js";
+import type { DevLinkConfig, ModeConfig, ModeFactory, ResolvedPackage, Lockfile, InstalledPackage, NormalizedConfig } from "../types.js";
 import { withStoreLock } from "../core/lock.js";
 import { readRegistry } from "../core/registry.js";
 import { readInstallations, writeInstallations, registerProject } from "../core/installations.js";
@@ -13,40 +19,62 @@ import { resolvePackage } from "../core/resolver.js";
 import { DEFAULT_NAMESPACE, LOCKFILE_NAME, DEFAULT_CONFIG_FILES } from "../constants.js";
 import { stageAndRelink, STAGING_DIR } from "../core/staging.js";
 import type { StagedPackage } from "../core/staging.js";
+import { normalizeConfig } from "../config.js";
 
 /**
- * Load configuration file
+ * Load configuration file.
+ *
+ * @param configPath - Explicit path to config file (--config flag)
+ * @param configName - Config file name override (--config-name flag); if not set, uses DEFAULT_CONFIG_FILES
+ * @param configKey - Key within the config export to extract DevLink config from (e.g. "devlink")
  */
-async function loadConfig(configPath?: string): Promise<DevLinkConfig> {
+async function loadConfig(configPath?: string, configName?: string, configKey?: string): Promise<DevLinkConfig> {
   const cwd = process.cwd();
-  
+
   if (configPath) {
     const fullPath = path.resolve(cwd, configPath);
-    const config = await import(fullPath);
-    return config.default || config;
+    const mod = await import(fullPath);
+    const raw = mod.default || mod;
+    return configKey && raw[configKey] ? raw[configKey] : raw;
   }
-  
-  // Try default config files
-  for (const filename of DEFAULT_CONFIG_FILES) {
+
+  const fileNames = configName ? [configName] : [...DEFAULT_CONFIG_FILES];
+
+  for (const filename of fileNames) {
     const fullPath = path.join(cwd, filename);
     try {
       await fs.access(fullPath);
-      const config = await import(fullPath);
-      return config.default || config;
+      const mod = await import(fullPath);
+      const raw = mod.default || mod;
+      return configKey && raw[configKey] ? raw[configKey] : raw;
     } catch {
       // File doesn't exist, try next
     }
   }
-  
+
+  // Fallback: try default config files (only if no explicit configName was given)
+  if (!configName) {
+    for (const filename of DEFAULT_CONFIG_FILES) {
+      const fullPath = path.join(cwd, filename);
+      try {
+        await fs.access(fullPath);
+        const mod = await import(fullPath);
+        const raw = mod.default || mod;
+        return configKey && raw[configKey] ? raw[configKey] : raw;
+      } catch {
+        // File doesn't exist, try next
+      }
+    }
+  }
+
+  const searched = configName ? [configName] : [...DEFAULT_CONFIG_FILES];
   throw new Error(
-    `No configuration file found. Looked for: ${DEFAULT_CONFIG_FILES.join(", ")}`
+    `No configuration file found. Looked for: ${searched.join(", ")}`
   );
 }
 
 /**
  * Link bin entries from a package into node_modules/.bin/
- * Reads the `bin` field from the installed package's package.json
- * and creates symlinks in .bin/ just like npm would.
  */
 async function linkBinEntries(projectPath: string, packageName: string): Promise<number> {
   const nodeModulesPath = path.join(projectPath, "node_modules");
@@ -66,7 +94,6 @@ async function linkBinEntries(projectPath: string, packageName: string): Promise
   const binDir = path.join(nodeModulesPath, ".bin");
   await fs.mkdir(binDir, { recursive: true });
 
-  // Normalize bin field: string → { name: string }, object → as-is
   const binEntries: Record<string, string> =
     typeof manifest.bin === "string"
       ? { [manifest.name.split("/").pop()!]: manifest.bin }
@@ -76,21 +103,14 @@ async function linkBinEntries(projectPath: string, packageName: string): Promise
   for (const [binName, relTarget] of Object.entries(binEntries)) {
     const targetAbsolute = path.resolve(pkgDir, relTarget);
     const linkPath = path.join(binDir, binName);
-
-    // Remove existing
     await fs.rm(linkPath, { force: true });
-
-    // Create relative symlink (like npm does)
     const relativeTarget = path.relative(binDir, targetAbsolute);
     await fs.symlink(relativeTarget, linkPath);
-
-    // Make target executable
     try {
       await fs.chmod(targetAbsolute, 0o755);
     } catch {
       // Best effort
     }
-
     linked++;
   }
 
@@ -99,7 +119,6 @@ async function linkBinEntries(projectPath: string, packageName: string): Promise
 
 /**
  * Remove broken symlinks from node_modules/.bin/
- * Returns the number of broken links removed.
  */
 async function cleanBrokenBinLinks(projectPath: string): Promise<number> {
   const binDir = path.join(projectPath, "node_modules", ".bin");
@@ -117,11 +136,8 @@ async function cleanBrokenBinLinks(projectPath: string): Promise<number> {
     try {
       const lstats = await fs.lstat(linkPath);
       if (!lstats.isSymbolicLink()) continue;
-
-      // stat follows the symlink — if it throws, the target is gone
       await fs.stat(linkPath);
     } catch {
-      // Broken symlink — remove it
       await fs.rm(linkPath, { force: true });
       removed++;
     }
@@ -167,13 +183,8 @@ async function linkPackage(
     targetPath = path.join(nodeModulesPath, packageName);
   }
   
-  // Remove existing
   await fs.rm(targetPath, { recursive: true, force: true });
-  
-  // Create parent directory
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  
-  // Copy package
   await copyDir(sourcePath, targetPath);
 }
 
@@ -198,6 +209,40 @@ async function writeLockfile(projectPath: string, lockfile: Lockfile): Promise<v
   await fs.writeFile(lockfilePath, JSON.stringify(lockfile, null, 2));
 }
 
+/**
+ * Inject staged packages as file: dependencies into the local package.json.
+ * Only modifies the root package.json — workspace members resolve by Node walk-up.
+ */
+async function injectStagedPackages(
+  projectPath: string,
+  stagedPackages: StagedPackage[],
+  removePackageNames: string[] = [],
+  registryPackages: { name: string; version: string }[] = [],
+  syntheticPackages?: Set<string>
+): Promise<void> {
+  const packageJsonPath = path.join(projectPath, "package.json");
+  const originalContent = await fs.readFile(packageJsonPath, "utf-8");
+  const manifest = JSON.parse(originalContent);
+  manifest.dependencies = manifest.dependencies || {};
+
+  for (const pkg of stagedPackages) {
+    if (syntheticPackages?.has(pkg.name)) continue;
+    const relativePath = path.relative(projectPath, pkg.stagingPath);
+    manifest.dependencies[pkg.name] = `file:${relativePath}`;
+  }
+
+  for (const pkg of registryPackages) {
+    manifest.dependencies[pkg.name] = pkg.version;
+  }
+
+  for (const pkgName of removePackageNames) {
+    delete manifest.dependencies[pkgName];
+    if (manifest.devDependencies) delete manifest.devDependencies[pkgName];
+  }
+
+  await fs.writeFile(packageJsonPath, JSON.stringify(manifest, null, 2) + "\n");
+}
+
 
 export interface InstallOptions {
   config?: string;
@@ -205,6 +250,10 @@ export interface InstallOptions {
   namespaces?: string[];
   runNpm?: boolean;
   runScripts?: boolean;
+  /** Config file name override */
+  configName?: string;
+  /** Key within the config export to extract DevLink config from (e.g. "devlink") */
+  configKey?: string;
 }
 
 export interface InstallResult {
@@ -239,85 +288,33 @@ async function runNpmInstall(runScripts: boolean = false): Promise<number> {
 }
 
 /**
- * Backup/restore for package.json when injecting devlink packages
- */
-interface PackageJsonBackup {
-  packageJsonPath: string;
-  originalContent: string;
-  restored: boolean;
-}
-
-/**
- * Restore the original package.json content
- */
-async function restorePackageJson(backup: PackageJsonBackup): Promise<void> {
-  if (backup.restored) return;
-  try {
-    await fs.writeFile(backup.packageJsonPath, backup.originalContent);
-  } catch {
-    // Best effort
-  }
-  backup.restored = true;
-}
-
-/**
- * Inject staged packages as file: dependencies, registry packages as exact versions,
- * and remove excluded packages from the project's package.json.
- */
-async function injectStagedPackages(
-  projectPath: string,
-  stagedPackages: StagedPackage[],
-  removePackageNames: string[] = [],
-  registryPackages: { name: string; version: string }[] = []
-): Promise<PackageJsonBackup> {
-  const packageJsonPath = path.join(projectPath, "package.json");
-  const originalContent = await fs.readFile(packageJsonPath, "utf-8");
-  const backup: PackageJsonBackup = { packageJsonPath, originalContent, restored: false };
-
-  const manifest = JSON.parse(originalContent);
-  manifest.dependencies = manifest.dependencies || {};
-
-  // Inject store packages as file: protocol
-  for (const pkg of stagedPackages) {
-    const relativePath = path.relative(projectPath, pkg.stagingPath);
-    manifest.dependencies[pkg.name] = `file:${relativePath}`;
-  }
-
-  // Inject registry packages as exact versions (npm resolves from configured registry)
-  for (const pkg of registryPackages) {
-    manifest.dependencies[pkg.name] = pkg.version;
-  }
-
-  // Remove packages that don't have a version for the current mode
-  for (const pkgName of removePackageNames) {
-    delete manifest.dependencies[pkgName];
-    if (manifest.devDependencies) delete manifest.devDependencies[pkgName];
-  }
-
-  await fs.writeFile(packageJsonPath, JSON.stringify(manifest, null, 2) + "\n");
-  return backup;
-}
-
-/**
- * Install packages from store based on config
+ * Install packages from store based on config.
+ * Operates on the current directory (root of monorepo).
+ * Injects file: protocols into the local package.json only.
  */
 export async function installPackages(options: InstallOptions = {}): Promise<InstallResult> {
   const projectPath = process.cwd();
-  const config = await loadConfig(options.config);
+  const config = await loadConfig(options.config, options.configName, options.configKey);
   
-  // Determine mode
-  let mode: string = options.mode || "dev";
-  if (!options.mode && config.detectMode) {
-    const ctx = {
-      env: process.env,
-      args: process.argv,
-      cwd: projectPath,
-      packages: config.packages,
-    };
-    mode = config.detectMode(ctx);
+  // Normalize config once at the top level
+  const normalized = normalizeConfig(config);
+  
+  // Build synthetic packages set
+  const syntheticPackages = new Set<string>();
+  for (const [pkgName, spec] of Object.entries(normalized.packages)) {
+    if (spec.synthetic) syntheticPackages.add(pkgName);
+  }
+  if (syntheticPackages.size > 0) {
+    console.log(`\n🔗 ${syntheticPackages.size} synthetic package(s) (store-only):`);
+    for (const name of syntheticPackages) {
+      console.log(`  - ${name}`);
+    }
   }
   
-  // Get mode config (look up factory by mode name)
+  // Determine mode from CLI flag
+  const mode: string = options.mode || "dev";
+  
+  // Get mode config
   const ctx = {
     env: process.env,
     args: process.argv,
@@ -355,7 +352,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   }
   
   // ================================================================
-  // NEW: If --npm flag, use staging + file: protocol flow
+  // If --npm flag, use staging + injection + npm install
   // ================================================================
   if (options.runNpm) {
     const isNpmManager = modeConfig.manager === "npm";
@@ -364,16 +361,13 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     const resolvedPackages: ResolvedPackage[] = [];
     const registryPackages: { name: string; version: string }[] = [];
     const removePackageNames: string[] = [];
-    for (const [pkgName, versions] of Object.entries(config.packages)) {
-      const version = versions[mode];
+    for (const [pkgName, spec] of Object.entries(config.packages)) {
+      const version = spec.version[mode];
       if (!version) {
-        // No version for this mode → remove from package.json
         removePackageNames.push(pkgName);
         continue;
       }
       
-      // When manager is "npm", packages are resolved by npm from registry
-      // — inject them as exact versions so npm fetches from configured registry
       if (isNpmManager) {
         registryPackages.push({ name: pkgName, version });
         continue;
@@ -396,7 +390,6 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     }
     
     if (resolvedPackages.length === 0 && registryPackages.length === 0 && removePackageNames.length === 0) {
-      // Still run npm install even if no devlink packages
       result.npmExitCode = await runNpmInstall(options.runScripts);
       return result;
     }
@@ -418,113 +411,99 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     // Phase 2: Stage + Re-link (only for store manager)
     if (resolvedPackages.length > 0) {
       console.log(`\n📦 Staging ${resolvedPackages.length} package(s) to ${STAGING_DIR}/...`);
+      for (const pkg of resolvedPackages) {
+        const synLabel = syntheticPackages.has(pkg.name) ? " (synthetic)" : "";
+        console.log(`  - ${pkg.name}@${pkg.version} [${pkg.namespace}]${synLabel}`);
+      }
     }
     const staging = resolvedPackages.length > 0
-      ? await stageAndRelink(projectPath, resolvedPackages)
+      ? await stageAndRelink(projectPath, resolvedPackages, syntheticPackages)
       : { staged: [], relinked: [] };
     
     if (staging.relinked.length > 0) {
       console.log(`  ↳ Re-linked ${staging.relinked.length} internal dependency(ies)`);
     }
     
-    // Phase 3: Inject file: deps + registry deps + remove excluded + npm install
-    const backup = await injectStagedPackages(projectPath, staging.staged, removePackageNames, registryPackages);
+    // Phase 3: Inject into local package.json only
+    await injectStagedPackages(projectPath, staging.staged, removePackageNames, registryPackages, syntheticPackages);
     result.removed = removePackageNames;
     
-    // Register signal handlers for cleanup
-    const onSignal = async () => {
-      await restorePackageJson(backup);
-      process.exit(1);
-    };
-    process.on("SIGINT", onSignal);
-    process.on("SIGTERM", onSignal);
+    // Phase 4: npm install
+    result.npmExitCode = await runNpmInstall(options.runScripts);
     
-    try {
-      result.npmExitCode = await runNpmInstall(options.runScripts);
-      
-      if (result.npmExitCode !== 0) {
-        return result;
-      }
-      
-      // Phase 3.5: Clean broken bin symlinks + link bin entries
-      const brokenRemoved = await cleanBrokenBinLinks(projectPath);
-      if (brokenRemoved > 0) {
-        console.log(`  ↳ Cleaned ${brokenRemoved} broken bin symlink${brokenRemoved === 1 ? "" : "s"}`);
-      }
-      let totalBinLinks = 0;
-      for (const pkg of resolvedPackages) {
-        totalBinLinks += await linkBinEntries(projectPath, pkg.name);
-      }
-      if (totalBinLinks > 0) {
-        console.log(`  ↳ Linked ${totalBinLinks} bin entr${totalBinLinks === 1 ? "y" : "ies"}`);
-      }
-      
-      // Phase 4: Tracking
-      for (const pkg of resolvedPackages) {
-        lockfile.packages[pkg.name] = {
-          version: pkg.version,
-          signature: pkg.signature!,
-          namespace: pkg.namespace,
-        };
-        
-        installedPackages[pkg.name] = {
-          version: pkg.version,
-          namespace: pkg.namespace!,
-          signature: pkg.signature!,
-          installedAt: new Date().toISOString(),
-        };
-        
-        result.installed.push(pkg);
-      }
-
-      // Track registry packages (resolved by npm, not from store)
-      for (const pkg of registryPackages) {
-        result.installed.push({
-          name: pkg.name,
-          version: pkg.version,
-          qname: `${pkg.name}@${pkg.version}`,
-          namespace: "registry",
-        });
-      }
-      
-      // Run afterAll hook
-      if (modeConfig.afterAll) {
-        await modeConfig.afterAll();
-      }
-      
-      await writeLockfile(projectPath, lockfile);
-      
-      if (Object.keys(installedPackages).length > 0) {
-        await withStoreLock(async () => {
-          const installations = await readInstallations();
-          registerProject(installations, projectPath, installedPackages);
-          await writeInstallations(installations);
-        });
-      }
-      
+    if (result.npmExitCode !== 0) {
       return result;
-    } finally {
-      // ALWAYS restore package.json
-      await restorePackageJson(backup);
-      
-      // Remove signal handlers
-      process.removeListener("SIGINT", onSignal);
-      process.removeListener("SIGTERM", onSignal);
     }
+    
+    // Phase 4.5: Clean broken bin symlinks + link bin entries
+    const brokenRemoved = await cleanBrokenBinLinks(projectPath);
+    if (brokenRemoved > 0) {
+      console.log(`  ↳ Cleaned ${brokenRemoved} broken bin symlink${brokenRemoved === 1 ? "" : "s"}`);
+    }
+    let totalBinLinks = 0;
+    for (const pkg of resolvedPackages) {
+      totalBinLinks += await linkBinEntries(projectPath, pkg.name);
+    }
+    if (totalBinLinks > 0) {
+      console.log(`  ↳ Linked ${totalBinLinks} bin entr${totalBinLinks === 1 ? "y" : "ies"}`);
+    }
+    
+    // Phase 5: Tracking
+    for (const pkg of resolvedPackages) {
+      lockfile.packages[pkg.name] = {
+        version: pkg.version,
+        signature: pkg.signature!,
+        namespace: pkg.namespace,
+      };
+      
+      installedPackages[pkg.name] = {
+        version: pkg.version,
+        namespace: pkg.namespace!,
+        signature: pkg.signature!,
+        installedAt: new Date().toISOString(),
+      };
+      
+      result.installed.push(pkg);
+    }
+
+    for (const pkg of registryPackages) {
+      result.installed.push({
+        name: pkg.name,
+        version: pkg.version,
+        qname: `${pkg.name}@${pkg.version}`,
+        namespace: "registry",
+      });
+    }
+    
+    if (modeConfig.afterAll) {
+      await modeConfig.afterAll();
+    }
+    
+    await writeLockfile(projectPath, lockfile);
+    
+    if (Object.keys(installedPackages).length > 0) {
+      await withStoreLock(async () => {
+        const installations = await readInstallations();
+        registerProject(installations, projectPath, installedPackages);
+        await writeInstallations(installations);
+      });
+    }
+    
+    return result;
   }
   
   // ================================================================
   // EXISTING: Direct copy to node_modules (without --npm)
   // ================================================================
 
-  // Clean broken bin symlinks before installing
   const brokenRemoved = await cleanBrokenBinLinks(projectPath);
   if (brokenRemoved > 0) {
     console.log(`  ↳ Cleaned ${brokenRemoved} broken bin symlink${brokenRemoved === 1 ? "" : "s"}`);
   }
 
-  for (const [pkgName, versions] of Object.entries(config.packages)) {
-    const version = versions[mode];
+  for (const [pkgName, spec] of Object.entries(config.packages)) {
+    if (syntheticPackages.has(pkgName)) continue;
+    const version = spec.version[mode];
     if (!version) {
       result.skipped.push({ name: pkgName, version: "N/A", reason: `No ${mode} version specified` });
       continue;
@@ -600,6 +579,8 @@ export async function handleInstall(args: {
   namespaces?: string[];
   npm?: boolean;
   runScripts?: boolean;
+  configName?: string;
+  configKey?: string;
 }): Promise<void> {
   try {
     const mode = args.mode || (args.prod ? "prod" : args.dev ? "dev" : undefined);
@@ -612,6 +593,8 @@ export async function handleInstall(args: {
       namespaces: args.namespaces,
       runNpm: args.npm,
       runScripts: args.runScripts,
+      configName: args.configName,
+      configKey: args.configKey,
     });
     
     if (result.installed.length > 0) {
@@ -639,7 +622,6 @@ export async function handleInstall(args: {
       console.log("No packages to install");
     }
     
-    // Report npm result if it was run
     if (args.npm) {
       if (result.npmExitCode === 0) {
         console.log("\n✓ npm install completed successfully");

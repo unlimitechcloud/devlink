@@ -2,23 +2,26 @@
 
 ## Introducción
 
-Este documento define los requisitos para extender DevLink con soporte para monorepos multinivel. Actualmente DevLink opera en un solo nivel de instalación. Esta extensión agrega: (1) un tree scanner que descubre y clasifica la estructura completa de un monorepo recursivamente, (2) instalación multinivel que ejecuta `dev-link install` en cada nivel respetando orden y fail-fast, (3) deduplicación por symlinks entre stores padre-hijo para evitar copias redundantes, (4) soporte para paquetes sintéticos que se resuelven al store pero no se instalan en `node_modules`, y (5) evolución del formato de configuración con backward compatibility.
+Este documento define los requisitos para extender DevLink con soporte para monorepos multinivel. Actualmente DevLink opera en un solo nivel de instalación. Esta extensión agrega: (1) un tree scanner que descubre y clasifica la estructura completa de un monorepo recursivamente, (2) instalación multinivel que ejecuta staging en la raíz, inyecta `file:` protocols de forma persistente en TODOS los `package.json` del árbol, y ejecuta `npm install` en cada nivel, (3) deduplicación por symlinks entre stores padre-hijo para evitar copias redundantes, (4) soporte para paquetes sintéticos que se resuelven al store pero no se instalan en `node_modules`, (5) evolución del formato de configuración con backward compatibility, y (6) un inyector tree-wide que reescribe persistentemente los `package.json` de todo el árbol con `file:` protocols.
 
 ## Glosario
 
 - **Tree_Scanner**: Componente que descubre y clasifica la estructura de un monorepo recursivamente, produciendo un `MonorepoTree`.
 - **MonorepoTree**: Estructura de datos que representa el árbol completo del monorepo: módulos, niveles de instalación y paquetes aislados.
 - **MonorepoModule**: Nodo del árbol que representa un paquete descubierto, con nombre, tipo, scripts, hijos y metadata.
-- **InstallLevel**: Nivel de instalación donde se ejecuta `dev-link install` o `npm install`. Ordenados: raíz → sub-monorepos → aislados.
-- **Multi_Level_Installer**: Componente que orquesta la instalación de dependencias en cada nivel del monorepo secuencialmente con fail-fast.
+- **InstallLevel**: Nivel de instalación donde se ejecuta `npm install`. Ordenados: raíz → sub-monorepos → aislados.
+- **Multi_Level_Installer**: Componente que orquesta la instalación de dependencias en cada nivel del monorepo. Ejecuta staging e inyección tree-wide en la raíz, y solo `npm install` en niveles posteriores.
+- **Tree_Wide_Injector**: Componente que inyecta `file:` protocols de forma persistente en TODOS los `package.json` del árbol del monorepo, usando paths relativos desde cada `package.json` al directorio de staging en la raíz.
+- **Inyección_Persistente**: Modelo donde los `file:` protocols se escriben en los `package.json` y persisten en disco (se commitean a git). No existe mecanismo de backup/restore.
 - **Symlink_Deduplicator**: Componente que evita copias redundantes del mismo paquete@versión entre stores padre-hijo creando symlinks.
 - **Config_Normalizer**: Componente que normaliza el formato de configuración (legacy y nuevo) a una estructura interna unificada.
 - **Tree_Command**: Comando CLI `dev-link tree` que expone el tree scanner con salida humana o JSON.
-- **Paquete_Sintético**: Paquete marcado con `synthetic: true` que se copia al store `.devlink/` pero NO se inyecta en `node_modules`.
+- **Paquete_Sintético**: Paquete marcado con `synthetic: true` que se copia al store `.devlink/` pero NO se inyecta en `package.json` ni en `node_modules`.
 - **Paquete_Aislado**: Paquete dentro de un sub-monorepo cuya ruta NO está cubierta por ningún glob de workspace de su padre.
 - **Sub_Monorepo**: Paquete descubierto que tiene su propio campo `workspaces` en `package.json`.
 - **Store_Padre**: Directorio `.devlink/` del nivel padre en la jerarquía del monorepo.
 - **Store_Hijo**: Directorio `.devlink/` de un sub-monorepo o paquete aislado.
+- **Staging_Directory**: Directorio `.devlink/staging/` en la raíz del monorepo donde se copian los paquetes resueltos antes de la inyección tree-wide.
 - **Formato_Legacy**: Formato de configuración actual donde cada paquete mapea modos a versiones directamente (ej: `{ dev: "0.3.0" }`).
 - **Formato_Nuevo**: Formato de configuración extendido con `version` anidado y campo `synthetic` opcional (ej: `{ version: { dev: "0.3.0" }, synthetic: true }`).
 - **Fail_Fast**: Estrategia donde si un nivel de instalación falla, los niveles posteriores no se ejecutan.
@@ -47,11 +50,13 @@ Este documento define los requisitos para extender DevLink con soporte para mono
 #### Criterios de Aceptación
 
 1. CUANDO el usuario ejecuta `dev-link install --recursive`, el Multi_Level_Installer DEBE escanear el monorepo y ejecutar la instalación en cada InstallLevel en orden: raíz → sub-monorepos → paquetes aislados
-2. CUANDO un InstallLevel tiene `hasDevlinkConfig: true`, el Multi_Level_Installer DEBE ejecutar `installPackages()` con la configuración DevLink propia de ese nivel
-3. CUANDO un InstallLevel tiene `hasDevlinkConfig: false` y `runNpm` es true, el Multi_Level_Installer DEBE ejecutar solo `npm install` en ese nivel
-4. SI un nivel de instalación falla, ENTONCES el Multi_Level_Installer DEBE detener la ejecución inmediatamente sin procesar niveles posteriores (Fail_Fast)
-5. EL Multi_Level_Installer DEBE reportar el resultado de cada nivel incluyendo ruta, duración y estado de éxito o error
-6. EL Multi_Level_Installer DEBE restaurar el directorio de trabajo al valor original después de procesar cada nivel, incluso en caso de error
+2. CUANDO el InstallLevel es la raíz y tiene `hasDevlinkConfig: true`, el Multi_Level_Installer DEBE ejecutar staging de paquetes, invocar la Inyección_Persistente tree-wide en TODOS los `package.json` del árbol, y ejecutar UN `npm install` en la raíz que procesa todo el workspace tree
+3. CUANDO un InstallLevel es un Sub_Monorepo (nivel 2+), el Multi_Level_Installer DEBE ejecutar solo `npm install` en ese nivel sin staging ni inyección, dado que la Inyección_Persistente ya reescribió sus `package.json` desde la raíz
+4. CUANDO un InstallLevel es un Paquete_Aislado, el Multi_Level_Installer DEBE ejecutar solo `npm install` de forma independiente
+5. SI un nivel de instalación falla, ENTONCES el Multi_Level_Installer DEBE detener la ejecución inmediatamente sin procesar niveles posteriores (Fail_Fast)
+6. EL Multi_Level_Installer DEBE reportar el resultado de cada nivel incluyendo ruta, duración y estado de éxito o error
+7. EL Multi_Level_Installer DEBE restaurar el directorio de trabajo al valor original después de procesar cada nivel, incluso en caso de error
+8. EL Multi_Level_Installer NO DEBE restaurar los `package.json` después de `npm install` — los `file:` protocols persisten como parte del modelo de Inyección_Persistente
 
 ### Requisito 3: Deduplicación por symlinks
 
@@ -108,5 +113,24 @@ Este documento define los requisitos para extender DevLink con soporte para mono
 
 1. SI el directorio raíz no contiene un `package.json`, ENTONCES el Tree_Scanner DEBE mostrar un mensaje de error indicando que se esperaba un `package.json` con campo `workspaces`
 2. CUANDO un glob de workspace no resuelve a ningún directorio, el Tree_Scanner DEBE emitir un warning sin detener la ejecución
-3. SI `npm install` retorna un código de salida distinto de cero en algún nivel, ENTONCES el Multi_Level_Installer DEBE mostrar el error, el nivel afectado, y detener la ejecución
+3. SI `npm install` retorna un código de salida distinto de cero en algún nivel, ENTONCES el Multi_Level_Installer DEBE mostrar el error, el nivel afectado, y detener la ejecución. Los `file:` protocols ya inyectados persisten en los `package.json` (no se revierten)
 4. SI el modo solicitado no tiene factory definida en la configuración, ENTONCES el sistema DEBE mostrar un error indicando los modos disponibles
+5. SI un `package.json` del árbol no tiene permisos de escritura durante la inyección tree-wide, ENTONCES el Tree_Wide_Injector DEBE mostrar un error indicando el path del `package.json` que no se pudo escribir
+6. SI un Sub_Monorepo tiene `file:` protocols en su `package.json` apuntando al Staging_Directory de la raíz pero el staging no existe, ENTONCES `npm install` DEBE fallar con error `ENOENT` y el Multi_Level_Installer DEBE indicar que se requiere ejecutar `devlink install --recursive --npm` desde la raíz para regenerar el staging
+
+
+### Requisito 8: Inyección tree-wide persistente de package.json
+
+**User Story:** Como desarrollador, quiero que DevLink inyecte `file:` protocols de forma persistente en TODOS los `package.json` de mi monorepo, para que `npm install` en cualquier nivel resuelva correctamente los paquetes gestionados por DevLink sin necesidad de backup/restore.
+
+#### Criterios de Aceptación
+
+1. CUANDO el Tree_Wide_Injector procesa el árbol del monorepo, el Tree_Wide_Injector DEBE recopilar TODOS los `package.json` del árbol: raíz, workspace members, sub-monorepo roots, sus workspace members y paquetes aislados
+2. CUANDO un `package.json` del árbol contiene una dependencia (`dependencies` o `devDependencies`) que coincide con un paquete staged por DevLink, el Tree_Wide_Injector DEBE reemplazar la versión con `file:` protocol usando un path relativo desde el directorio del `package.json` al Staging_Directory de la raíz
+3. CUANDO un paquete está marcado como Paquete_Sintético, el Tree_Wide_Injector DEBE excluirlo de la inyección en todos los `package.json` del árbol
+4. CUANDO un paquete de registry está configurado para el modo actual, el Tree_Wide_Injector DEBE inyectar la versión exacta del registry en los `package.json` que lo referencien
+5. CUANDO un paquete gestionado por DevLink no tiene versión definida para el modo actual, el Tree_Wide_Injector DEBE eliminar ese paquete de `dependencies` y `devDependencies` en todos los `package.json` del árbol
+6. EL Tree_Wide_Injector NO DEBE crear backups de los `package.json` — los cambios son persistentes y se commitean a git (Inyección_Persistente)
+7. CUANDO el modo es `remote`, el Tree_Wide_Injector DEBE reescribir los campos con versiones de registry en lugar de `file:` protocols
+8. EL Tree_Wide_Injector DEBE escribir un `package.json` solo cuando hubo cambios efectivos en sus dependencias, evitando escrituras innecesarias
+9. PARA TODOS los `package.json` inyectados con `file:` protocol, el path relativo DEBE resolver correctamente desde el directorio del `package.json` al directorio del paquete en el Staging_Directory de la raíz

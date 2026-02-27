@@ -11,30 +11,31 @@ export type {
   ModeConfig,
   ModeFactory,
   FactoryContext,
-  PackageVersions,
   ResolvedPackage,
   PackageManifest,
   StoredPackage,
   Lockfile,
+  MonorepoTree,
+  MonorepoModule,
+  InstallLevel,
+  ScanOptions,
+  MultiLevelInstallOptions,
+  MultiLevelInstallResult,
+  LevelResult,
+  NormalizedConfig,
+  NormalizedPackageSpec,
+  PackageSpecNew,
 } from "./types.js";
 
 // Config
-export { loadConfig, createContext, detectMode } from "./config.js";
+export { loadConfig, createContext, normalizeConfig } from "./config.js";
 
-// Store
-export {
-  publishPackage,
-  linkPackage,
-  removePackages,
-  getStoreMainDir,
-  getStorePackagesDir,
-  getPackageStoreDir,
-  getPackageSignature,
-  readPackageManifest,
-  writePackageManifest,
-  readLockfile,
-  writeLockfile,
-} from "./store.js";
+// Core
+export { scanTree, classifyModule } from "./core/tree.js";
+export { installMultiLevel, runNpmAtLevel } from "./core/multilevel.js";
+export { stageAndRelink, STAGING_DIR } from "./core/staging.js";
+export { resolvePackage } from "./core/resolver.js";
 
-// Installer
-export { install, resolvePackages } from "./installer.js";
+// Commands
+export { installPackages, handleInstall } from "./commands/install.js";
+export { handleTree } from "./commands/tree.js";
