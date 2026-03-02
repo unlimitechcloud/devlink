@@ -393,7 +393,7 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.0.1] - 2026-03-02
+### Latest: [2.0.2] - 2026-03-02
 
 - Updated package description and npm keywords for improved discoverability
 - Added `tree` command documentation to README
