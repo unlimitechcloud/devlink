@@ -233,7 +233,78 @@ gh release create v1.1.0 \
 
 **Note:** The `--notes` should contain only the content of the changelog section for this version (without the version header).
 
-### Step 6: npm Publication (Optional)
+### Step 6: Monitor Publish Workflow
+
+The tag push triggers the publish workflow automatically. Monitor it until completion:
+
+```bash
+# List recent runs to find the one triggered by the tag
+gh run list --limit 5
+```
+
+Identify the run triggered by the `v{VERSION}` tag push. Store the run ID.
+
+#### Poll Loop
+
+Poll the workflow status every 30-60 seconds until it completes:
+
+```bash
+gh run view <RUN_ID>
+```
+
+**Status interpretation:**
+- `*` (in progress) → Keep polling
+- `✓` (success) → Release complete, proceed to npm publication step
+- `X` (failure) → Enter diagnosis loop
+
+#### On Success
+
+Report to user:
+```
+✓ Publish workflow completed successfully.
+@unlimitechcloud/devlink@{VERSION} published.
+```
+
+#### On Failure — Diagnosis and Correction Loop
+
+1. **Get failed job details:**
+   ```bash
+   gh run view <RUN_ID> --log-failed
+   ```
+
+2. **Diagnose the failure.** Common failure patterns:
+
+   | Failure | Cause | Fix |
+   |---------|-------|-----|
+   | Version mismatch | `package.json` version doesn't match tag | Fix version, amend, re-tag, force push |
+   | Build failure | TypeScript compilation error | Fix code, amend, re-tag, force push |
+   | Test failure | Failing test | Fix test, amend, re-tag, force push |
+   | Publish failure (403/409) | Package version already exists or auth issue | Check permissions, or bump to patch version |
+   | Missing secrets | Repository secrets not configured | Inform user to configure in GitHub Settings |
+
+3. **Apply the fix:**
+   ```bash
+   # Stage and amend the commit
+   git add <fixed-files>
+   git commit --amend --no-edit
+
+   # Recreate the tag on the amended commit
+   git tag -d v{VERSION}
+   git tag -a v{VERSION} -m "v{VERSION}"
+
+   # Force push both branch and tag
+   git push origin master --force
+   git push origin --force v{VERSION}
+   ```
+
+4. **Verify new run triggered:**
+   ```bash
+   gh run list --limit 3
+   ```
+
+5. **Repeat the poll loop** for the new run. Continue this cycle until the workflow succeeds.
+
+### Step 7: npm Publication (Optional)
 
 Ask the user:
 ```
@@ -318,7 +389,9 @@ The AI assistant executes all commands directly. User interaction is only requir
 ├─────────────────────────────────────────────────────────────┤
 │ 9. Create GitHub Release with changelog notes                │
 ├─────────────────────────────────────────────────────────────┤
-│ 10. Ask about npm publication → Create -npm tag if confirmed │
+│ 10. Monitor publish workflow → Diagnose & fix loop on failure│
+├─────────────────────────────────────────────────────────────┤
+│ 11. Ask about npm publication → Create -npm tag if confirmed │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -331,3 +404,5 @@ The AI assistant executes all commands directly. User interaction is only requir
 - **Version validation fails:** Explain why and ask for valid version
 - **Release creation fails:** Check if tag already exists, offer to delete and recreate
 - **npm tag already exists:** Offer to delete and recreate
+- **Publish workflow fails:** Enter diagnosis loop (Step 6) — inspect logs, fix, amend, re-tag, force push, re-monitor
+- **Tag not pushed after force push:** Run `git push origin --force v{VERSION}` separately (force push of branch does not always update tags)
