@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] - 2026-03-02
+
+### Changed
+- Updated package description to better reflect current capabilities: package management utility with environment-based install modes and declarative configuration
+- Added `tree` command documentation to README (command reference table and detailed usage section)
+- Expanded npm keywords for improved discoverability: `workspaces`, `namespace`, `devlink`, `package-manager`, `linking`, `multi-repo`, `local-packages`, `libraries`, `ai-first`
+
 ## [2.0.0] - 2026-02-27
 
 ### Breaking Changes

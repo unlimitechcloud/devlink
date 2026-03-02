@@ -1,6 +1,6 @@
 # @unlimitechcloud/devlink
 
-A modern local package development and linking tool with namespace support, designed for monorepos and multi-project workflows.
+A modern package management utility for npm projects and monorepos. Manage local library development with a namespace-isolated store, environment-based install modes for local and published registry workflows, and declarative configuration.
 
 [![npm version](https://img.shields.io/npm/v/@unlimitechcloud/devlink.svg)](https://www.npmjs.com/package/@unlimitechcloud/devlink)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -85,6 +85,7 @@ This publishes the new version AND automatically updates all consumer projects.
 | `remove` | Remove packages or namespaces | `-n, --namespace` |
 | `verify` | Check store integrity | `--fix` |
 | `prune` | Remove orphaned packages | `--dry-run` |
+| `tree` | Display monorepo structure | `--json`, `--depth` |
 | `docs` | Display embedded documentation | `<topic>` |
 
 ### Command Details
@@ -159,6 +160,16 @@ Removes packages, versions, or entire namespaces.
 dev-link remove @myorg/core@1.0.0   # Remove specific version
 dev-link remove @myorg/core         # Remove all versions
 dev-link remove feature-v2          # Remove entire namespace
+```
+
+#### `dev-link tree`
+
+Scans and displays the monorepo structure, detecting install levels, sub-monorepos, and isolated packages.
+
+```bash
+dev-link tree                       # Visual tree output
+dev-link tree --json                # JSON output for tool consumption
+dev-link tree --depth 3             # Limit scan depth
 ```
 
 #### `dev-link docs`
@@ -382,14 +393,10 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.0.0] - 2026-02-27
+### Latest: [2.0.1] - 2026-03-02
 
-- **Breaking:** Package version format changed from flat mode keys to nested `version` object
-- **Breaking:** Removed `detectMode` from config interface
-- New `tree` command for monorepo structure scanning
-- Multilevel install (`--recursive`) for hierarchical monorepo support
-- Synthetic packages support (`synthetic: true`) for store-only staging
-- Custom config file support (`--config-name`, `--config-key`)
+- Updated package description and npm keywords for improved discoverability
+- Added `tree` command documentation to README
 
 📄 [Full Changelog](CHANGELOG.md)
 

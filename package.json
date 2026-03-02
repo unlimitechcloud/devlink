@@ -1,7 +1,7 @@
 {
   "name": "@unlimitechcloud/devlink",
-  "version": "2.0.0",
-  "description": "Local package development and linking tool with namespace support",
+  "version": "2.0.1",
+  "description": "Package management utility for npm projects and monorepos — local library development with namespace-isolated store, environment-based install modes for local and published registry workflows, and declarative configuration",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -42,7 +42,16 @@
     "development",
     "monorepo",
     "packages",
-    "dependencies"
+    "dependencies",
+    "workspaces",
+    "namespace",
+    "devlink",
+    "package-manager",
+    "linking",
+    "multi-repo",
+    "local-packages",
+    "libraries",
+    "ai-first"
   ],
   "author": "UnlimitechCloud",
   "license": "MIT",
