@@ -97,7 +97,7 @@ dev-link consumers --prune    # Remove dead consumer entries
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `not found in namespaces` | Package not published | Publish first or check namespace config |
+| `not found in store` | Package not published | Package falls back to npm automatically; publish to store to avoid fallback |
 | `package.json not found` | Wrong directory | Run from directory with package.json |
 | `Cannot delete reserved namespace` | Trying to remove `global` | Remove individual packages instead |
 | `Lock timeout after 30000ms` | Another process holds lock | Wait or check for stale locks |

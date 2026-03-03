@@ -80,37 +80,59 @@ export async function loadConfig(configPath: string): Promise<{
 }
 
 /**
- * Detects if a package spec uses the new format: { version: { mode: "ver" }, synthetic?: boolean }
+ * Detects if a package spec uses the new format: { version: "ver" | { mode: "ver" }, synthetic?: boolean }
  */
 export function isNewFormat(spec: unknown): spec is PackageSpecNew {
+  if (
+    typeof spec !== "object" ||
+    spec === null ||
+    Array.isArray(spec) ||
+    !("version" in spec)
+  ) {
+    return false;
+  }
+  const v = (spec as any).version;
+  // version can be a string (universal) or a non-null, non-array object (per-mode)
   return (
-    typeof spec === "object" &&
-    spec !== null &&
-    !Array.isArray(spec) &&
-    "version" in spec &&
-    typeof (spec as any).version === "object" &&
-    (spec as any).version !== null &&
-    !Array.isArray((spec as any).version)
+    typeof v === "string" ||
+    (typeof v === "object" && v !== null && !Array.isArray(v))
   );
+}
+
+/**
+ * Resolves the version for a given mode from a PackageSpecNew.
+ *
+ * - If `spec.version` is a string (universal), returns that string for any mode.
+ * - If `spec.version` is a Record, returns `spec.version[mode]` (may be undefined).
+ */
+export function resolveVersion(spec: PackageSpecNew, mode: string): string | undefined {
+  if (typeof spec.version === "string") {
+    return spec.version;
+  }
+  return spec.version[mode];
 }
 
 /**
  * Normalizes a raw DevLinkConfig into a unified NormalizedConfig.
  *
  * Format: { version: { dev: "0.3.0" }, synthetic?: true }
+ * Or:     { version: "0.3.0", synthetic?: true }  (universal — all modes)
  */
 export function normalizeConfig(raw: DevLinkConfig): NormalizedConfig {
   const packages: Record<string, NormalizedPackageSpec> = {};
 
   for (const [pkgName, spec] of Object.entries(raw.packages)) {
     if (isNewFormat(spec)) {
+      const versions = typeof spec.version === "string"
+        ? { "*": spec.version }
+        : spec.version;
       packages[pkgName] = {
-        versions: spec.version,
+        versions,
         synthetic: spec.synthetic ?? false,
       };
     } else {
       throw new Error(
-        `Unrecognized config format for package "${pkgName}": expected { version: { mode: "ver" } }`
+        `Unrecognized config format for package "${pkgName}": expected { version: "ver" } or { version: { mode: "ver" } }`
       );
     }
   }

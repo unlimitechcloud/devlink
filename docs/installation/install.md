@@ -42,9 +42,9 @@ Create `devlink.config.mjs` in your project root:
 ```javascript
 export default {
   packages: {
-    "@scope/core": { dev: "1.0.0", remote: "1.0.0" },
-    "@scope/utils": { dev: "2.0.0", remote: "1.5.0" },
-    "@scope/dev-tools": { dev: "1.0.0" },  // only in dev mode
+    "@scope/core": { version: { dev: "1.0.0", remote: "1.0.0" } },
+    "@scope/utils": { version: "2.0.0" },                           // universal
+    "@scope/dev-tools": { version: { dev: "1.0.0" } },              // only in dev mode
   },
 
   dev: () => ({
@@ -54,7 +54,6 @@ export default {
 
   remote: () => ({
     manager: "npm",
-    args: ["--no-save"],
   }),
 
   detectMode: (ctx) => {
@@ -156,12 +155,27 @@ If a package in the config doesn't have a version for the current mode, it is re
 
 ```javascript
 packages: {
-  "@scope/core": { dev: "1.0.0", remote: "1.0.0" },     // both modes
-  "@scope/dev-tools": { dev: "1.0.0" },                   // dev only — removed in remote
+  "@scope/core": { version: { dev: "1.0.0", remote: "1.0.0" } },  // both modes
+  "@scope/dev-tools": { version: { dev: "1.0.0" } },               // dev only — removed in remote
 }
 ```
 
 When running `--mode remote --npm`, `@scope/dev-tools` will be removed from the temporary `package.json` before `npm install` runs.
+
+## npm Fallback (Store Manager)
+
+When using `manager: "store"`, if a package is not found in any of the configured namespaces, DevLink falls back to npm instead of silently skipping:
+
+- **`--npm` flow (staging):** The package is added to the registry injection list and resolved by npm during `npm install`. A `⚠️` warning is printed.
+- **Direct copy flow (without `--npm`):** DevLink runs `npm install <package>@<version> --no-save` as a fallback. A `⚠️` warning is printed.
+
+This ensures packages that haven't been published to the local store yet can still be resolved from the npm registry, with explicit visibility into which packages took the fallback path.
+
+Example output:
+```
+  ⚠️  @scope/core@1.0.0 not found in store (feature-v2, global), falling back to npm
+  ✓ @scope/core@1.0.0 (npm fallback)
+```
 
 ## Resolution Process
 
@@ -238,11 +252,17 @@ remote: () => ({
 
 ### Package Not Found
 
+When using `manager: "store"`, if a package is not found in any configured namespace, DevLink falls back to npm with a warning:
+
 ```
-Error: @scope/core@1.0.0 not found in namespaces: feature-v2, global
+  ⚠️  @scope/core@1.0.0 not found in store (feature-v2, global), falling back to npm
 ```
 
-The package hasn't been published to any of the configured namespaces.
+If the npm fallback also fails, the package is skipped with a reason:
+
+```
+Skipped: @scope/core@1.0.0 — npm fallback failed (exit code 1)
+```
 
 ### Config Not Found
 

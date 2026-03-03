@@ -19,7 +19,7 @@ import { resolvePackage } from "../core/resolver.js";
 import { DEFAULT_NAMESPACE, LOCKFILE_NAME, DEFAULT_CONFIG_FILES } from "../constants.js";
 import { stageAndRelink, STAGING_DIR } from "../core/staging.js";
 import type { StagedPackage } from "../core/staging.js";
-import { normalizeConfig } from "../config.js";
+import { normalizeConfig, resolveVersion } from "../config.js";
 
 /**
  * Load configuration file.
@@ -372,7 +372,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     const registryPackages: { name: string; version: string }[] = [];
     const removePackageNames: string[] = [];
     for (const [pkgName, spec] of Object.entries(config.packages)) {
-      const version = spec.version[mode];
+      const version = resolveVersion(spec, mode);
       if (!version) {
         removePackageNames.push(pkgName);
         continue;
@@ -385,7 +385,9 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       
       const resolution = resolvePackage(pkgName, version, namespaces, registry);
       if (!resolution.found) {
-        result.skipped.push({ name: pkgName, version, reason: `Not found in namespaces: ${namespaces.join(", ")}` });
+        // Fallback to npm registry when not found in store
+        console.log(`  ⚠️  ${pkgName}@${version} not found in store (${namespaces.join(", ")}), falling back to npm`);
+        registryPackages.push({ name: pkgName, version });
         continue;
       }
       
@@ -513,7 +515,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
 
   for (const [pkgName, spec] of Object.entries(config.packages)) {
     if (syntheticPackages.has(pkgName)) continue;
-    const version = spec.version[mode];
+    const version = resolveVersion(spec, mode);
     if (!version) {
       result.skipped.push({ name: pkgName, version: "N/A", reason: `No ${mode} version specified` });
       continue;
@@ -521,7 +523,42 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     
     const resolution = resolvePackage(pkgName, version, namespaces, registry);
     if (!resolution.found) {
-      result.skipped.push({ name: pkgName, version, reason: `Not found in namespaces: ${namespaces.join(", ")}` });
+      // Fallback to npm when not found in store
+      console.log(`  ⚠️  ${pkgName}@${version} not found in store (${namespaces.join(", ")}), falling back to npm`);
+      try {
+        const exitCode = await new Promise<number>((resolve, reject) => {
+          const child = spawn("npm", ["install", `${pkgName}@${version}`, "--no-save"], {
+            cwd: projectPath,
+            stdio: "inherit",
+          });
+          child.on("error", reject);
+          child.on("close", (code) => resolve(code ?? 1));
+        });
+        if (exitCode !== 0) {
+          result.skipped.push({ name: pkgName, version, reason: `npm fallback failed (exit code ${exitCode})` });
+          continue;
+        }
+        await linkBinEntries(projectPath, pkgName);
+        lockfile.packages[pkgName] = {
+          version,
+          signature: `npm:${version}`,
+        };
+        installedPackages[pkgName] = {
+          version,
+          namespace: "npm-fallback",
+          signature: `npm:${version}`,
+          installedAt: new Date().toISOString(),
+        };
+        result.installed.push({
+          name: pkgName,
+          version,
+          qname: `${pkgName}@${version}`,
+          namespace: "npm-fallback",
+        });
+        console.log(`  ✓ ${pkgName}@${version} (npm fallback)`);
+      } catch (err: any) {
+        result.skipped.push({ name: pkgName, version, reason: `npm fallback failed: ${err.message}` });
+      }
       continue;
     }
     

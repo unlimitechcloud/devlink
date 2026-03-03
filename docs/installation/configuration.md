@@ -26,13 +26,35 @@ In order of priority:
 
 ### packages
 
-Defines which packages to manage and their versions per mode. Each key is a package name, and the value is an object mapping mode names to version strings.
+Defines which packages to manage and their versions. Each key is a package name, and the value is a spec object with a `version` field.
 
+The `version` field supports two formats:
+
+**Per-mode object** — different versions per mode:
 ```javascript
 packages: {
-  "@scope/core": { dev: "1.0.0", remote: "1.0.0" },
-  "@scope/utils": { dev: "2.0.0", remote: "1.5.0" },
-  "@scope/dev-tools": { dev: "1.0.0" },  // only available in dev mode
+  "@scope/core": { version: { dev: "1.0.0", remote: "1.0.0" } },
+  "@scope/utils": { version: { dev: "2.0.0", remote: "1.5.0" } },
+  "@scope/dev-tools": { version: { dev: "1.0.0" } },  // only available in dev mode
+}
+```
+
+**Universal string** — same version for all modes:
+```javascript
+packages: {
+  "@scope/core": { version: "1.0.0" },       // resolved in every mode
+  "@scope/utils": { version: "2.0.0" },      // resolved in every mode
+}
+```
+
+The universal string format is equivalent to `{ "*": "1.0.0" }` internally. It ensures the package is always resolved regardless of the active mode.
+
+You can mix both formats:
+```javascript
+packages: {
+  "@scope/core": { version: "1.0.0" },                              // all modes
+  "@scope/dev-tools": { version: { dev: "1.0.0" } },                // dev only
+  "@scope/utils": { version: { dev: "2.0.0", remote: "1.5.0" } },  // different per mode
 }
 ```
 
@@ -52,7 +74,6 @@ dev: (ctx) => ({
 // Remote mode — uses npm registry (e.g. GitHub Packages)
 remote: (ctx) => ({
   manager: "npm",
-  args: ["--no-save"],
 }),
 ```
 
@@ -110,7 +131,6 @@ Packages are resolved by npm from the configured registry. When used with `--npm
 ```javascript
 {
   manager: "npm",
-  args: ["--no-save", "--legacy-peer-deps"],
 }
 ```
 
@@ -118,12 +138,15 @@ Packages are resolved by npm from the configured registry. When used with `--npm
 
 ```javascript
 export default {
-  // Packages to manage — versions per mode
+  // Packages to manage
   packages: {
-    "@myorg/core": { dev: "1.0.0", remote: "1.0.0" },
-    "@myorg/utils": { dev: "1.0.0", remote: "1.0.0" },
-    "@myorg/http": { dev: "1.0.0", remote: "1.0.0" },
-    "@myorg/dev-tools": { dev: "1.0.0" },  // dev only
+    // Universal version — resolved in all modes
+    "@myorg/core": { version: "1.0.0" },
+    "@myorg/utils": { version: "1.0.0" },
+
+    // Per-mode versions
+    "@myorg/http": { version: { dev: "1.0.0", remote: "1.0.0" } },
+    "@myorg/dev-tools": { version: { dev: "1.0.0" } },  // dev only
   },
 
   // Development mode: use local store
@@ -200,7 +223,8 @@ Pin exact versions for reproducibility:
 
 ```javascript
 packages: {
-  "@scope/core": { dev: "1.2.3", remote: "1.2.3" },
+  "@scope/core": { version: "1.2.3" },                    // universal
+  "@scope/utils": { version: { dev: "1.2.3", remote: "1.2.3" } },  // per-mode
 }
 ```
 
@@ -210,10 +234,20 @@ Use different versions for development and remote:
 
 ```javascript
 packages: {
-  "@scope/core": { 
+  "@scope/core": { version: { 
     dev: "2.0.0-beta.1",  // Latest beta for development
     remote: "1.5.0",       // Stable for remote/CI
-  },
+  }},
+}
+```
+
+### Universal Versions
+
+Use a string version when the same version applies to all modes:
+
+```javascript
+packages: {
+  "@scope/core": { version: "1.0.0" },  // always resolved, regardless of mode
 }
 ```
 
@@ -223,9 +257,9 @@ Packages without a version for a mode are removed during `--npm` installs:
 
 ```javascript
 packages: {
-  "@scope/core": { dev: "1.0.0", remote: "1.0.0" },     // both modes
-  "@scope/dev-tools": { dev: "1.0.0" },                   // dev only
-  "@scope/ci-tools": { remote: "1.0.0" },                 // remote only
+  "@scope/core": { version: { dev: "1.0.0", remote: "1.0.0" } },  // both modes
+  "@scope/dev-tools": { version: { dev: "1.0.0" } },               // dev only
+  "@scope/ci-tools": { version: { remote: "1.0.0" } },             // remote only
 }
 ```
 

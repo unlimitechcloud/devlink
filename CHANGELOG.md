@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] - 2026-03-03
+
+### Added
+- Universal version format: `version: "1.0.0"` (string) applies to all modes, alongside existing per-mode object format `version: { dev: "1.0.0", remote: "1.0.0" }`
+- `resolveVersion(spec, mode)` helper exported from config module
+- npm fallback for store manager: when a package is not found in the local store, DevLink falls back to npm with a visible `⚠️` warning instead of silently skipping
+
+### Changed
+- `PackageSpecNew.version` now accepts `string | Record<string, string>`
+- Config normalization maps string versions to `{ "*": version }` internally
+- Updated installation documentation (install.md, configuration.md, AGENTS.md) for universal version format and npm fallback behavior
+- Updated README configuration examples to reflect new version formats
+
+### Removed
+- Dead `args: ["--no-save"]` from documentation examples (no longer used by install flow)
+
 ## [2.1.0] - 2026-03-03
 
 ### Added

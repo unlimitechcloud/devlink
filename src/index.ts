@@ -28,7 +28,7 @@ export type {
 } from "./types.js";
 
 // Config
-export { loadConfig, createContext, normalizeConfig } from "./config.js";
+export { loadConfig, createContext, normalizeConfig, resolveVersion } from "./config.js";
 
 // Core
 export { scanTree, classifyModule } from "./core/tree.js";

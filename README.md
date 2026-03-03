@@ -13,6 +13,7 @@ When developing multiple packages locally, you need a way to test changes across
 - **Multi-version support** - Test multiple versions of the same package simultaneously across different projects
 - **Automatic consumer updates** - Push changes to all dependent projects with one command
 - **Declarative configuration** - Define dependencies in a config file, not CLI flags
+- **npm fallback** - Packages not yet in the local store are automatically resolved from npm, with clear warnings
 
 ## Installation
 
@@ -42,8 +43,8 @@ Create `devlink.config.mjs` in your project root:
 ```javascript
 export default {
   packages: {
-    "@myorg/my-library": { dev: "1.0.0" },
-    "@myorg/utils": { dev: "2.0.0" },
+    "@myorg/my-library": { version: { dev: "1.0.0" } },
+    "@myorg/utils": { version: "2.0.0" },
   },
   dev: () => ({
     manager: "store",
@@ -111,7 +112,7 @@ dev-link push -n feature-v2         # Push to specific namespace
 
 #### `dev-link install`
 
-Installs packages from the store or registry based on your `devlink.config.mjs`. When no mode is specified, runs npm-only install without package resolution.
+Installs packages from the store or registry based on your `devlink.config.mjs`. When using the store manager, packages not found in the store automatically fall back to npm with a warning. When no mode is specified, runs npm-only install without package resolution.
 
 ```bash
 dev-link install                        # npm-only (no package resolution)
@@ -191,11 +192,11 @@ dev-link docs store/agents.md       # Store section agent guide
 
 ```javascript
 export default {
-  // Packages to manage — versions per mode
+  // Packages to manage — versions per mode or universal
   packages: {
-    "@myorg/core": { dev: "1.0.0", remote: "1.0.0" },
-    "@myorg/utils": { dev: "2.0.0", remote: "1.5.0" },
-    "@myorg/dev-tools": { dev: "1.0.0" },  // dev only — removed in remote mode
+    "@myorg/core": { version: "1.0.0" },                              // universal — all modes
+    "@myorg/utils": { version: { dev: "2.0.0", remote: "1.5.0" } },  // per-mode
+    "@myorg/dev-tools": { version: { dev: "1.0.0" } },                // dev only — removed in remote mode
   },
   
   // Dev mode — uses local DevLink store
@@ -317,7 +318,7 @@ Replace `npm install` with DevLink during development using npm lifecycle hooks:
 }
 ```
 
-- `dev:install` — resolves packages from the local DevLink store via staging + `file:` protocol
+- `dev:install` — resolves packages from the local DevLink store via staging + `file:` protocol. Packages not found in the store fall back to npm automatically.
 - `remote:install` — injects exact versions into `package.json` for npm to resolve from a configured registry (e.g. GitHub Packages)
 
 ## Use with AI Agents
@@ -395,11 +396,12 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.1.0] - 2026-03-03
+### Latest: [2.2.0] - 2026-03-03
 
-- No-mode install: `--npm` without `--mode` runs npm-only install across all monorepo levels
-- `--mode` is now optional — omit it for pure npm install without package resolution
-- Updated install documentation to reflect no-mode behavior
+- Universal version format: `version: "1.0.0"` applies to all modes (alongside per-mode object format)
+- npm fallback for store manager: packages not found in the store fall back to npm with a `⚠️` warning
+- `resolveVersion(spec, mode)` helper exported from config module
+- Updated installation docs and README for new features
 
 📄 [Full Changelog](CHANGELOG.md)
 

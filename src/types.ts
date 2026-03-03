@@ -406,10 +406,14 @@ export interface MultiLevelInstallResult {
 
 /**
  * Formato nuevo de paquete en config (con version anidado y synthetic)
+ *
+ * `version` puede ser:
+ *   - `Record<string, string>` — versión por modo (ej: `{ dev: "0.4.0", remote: "0.4.0" }`)
+ *   - `string` — versión universal que aplica a todos los modos (ej: `"0.4.0"`)
  */
 export interface PackageSpecNew {
-  /** Versiones por modo */
-  version: Record<string, string>;
+  /** Versiones por modo, o versión universal (string) */
+  version: Record<string, string> | string;
   /** Si es un paquete sintético (solo store, no node_modules) */
   synthetic?: boolean;
 }
