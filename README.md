@@ -14,6 +14,7 @@ When developing multiple packages locally, you need a way to test changes across
 - **Automatic consumer updates** - Push changes to all dependent projects with one command
 - **Declarative configuration** - Define dependencies in a config file, not CLI flags
 - **npm fallback** - Packages not yet in the local store are automatically resolved from npm, with clear warnings
+- **Synthetic packages** - Stage packages to `.devlink/` for tooling and build-time use without polluting `package.json`
 
 ## Installation
 
@@ -197,6 +198,7 @@ export default {
     "@myorg/core": { version: "1.0.0" },                              // universal — all modes
     "@myorg/utils": { version: { dev: "2.0.0", remote: "1.5.0" } },  // per-mode
     "@myorg/dev-tools": { version: { dev: "1.0.0" } },                // dev only — removed in remote mode
+    "@myorg/sst": { version: { dev: "0.4.0" }, synthetic: true },     // synthetic — staged to .devlink/
   },
   
   // Dev mode — uses local DevLink store
@@ -396,11 +398,11 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.2.1] - 2026-03-03
+### Latest: [2.2.2] - 2026-03-03
 
-- No-mode install now resolves universal packages (`version: "1.0.0"`) — injected into `package.json` for npm to resolve
-- Universal packages are always installed regardless of mode
-- Updated no-mode documentation to reflect correct behavior
+- Synthetic packages (`synthetic: true`) are now staged to `.devlink/` in all flows (store, npm, no-mode)
+- Packages not found in the store are downloaded via `npm pack` and extracted to `.devlink/`
+- Synthetic packages never appear in `package.json`
 
 📄 [Full Changelog](CHANGELOG.md)
 

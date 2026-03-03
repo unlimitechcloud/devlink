@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.2] - 2026-03-03
+
+### Added
+- Synthetic packages (`synthetic: true`): packages are staged to `.devlink/` instead of being injected into `package.json`
+- `stageFromNpm()` function in staging module: downloads packages via `npm pack` and extracts to `.devlink/`
+- Synthetic staging works in all flows: `--npm` + store, `--npm` + npm manager, direct copy, and no-mode
+- When a synthetic package is not found in the store, it falls back to `npm pack` staging instead of `npm install --no-save`
+
+### Changed
+- `--npm` flow separates synthetic packages from registry injection — synthetics go to `.devlink/`, non-synthetics to `package.json`
+- No-mode flow separates synthetic universal packages — staged via `npm pack` instead of injected
+- Direct copy flow handles synthetic packages: found in store → copied to `.devlink/`; not found → `npm pack` to `.devlink/`
+- Updated documentation (install.md, configuration.md, AGENTS.md, README) for synthetic package behavior
+
 ## [2.2.1] - 2026-03-03
 
 ### Fixed

@@ -183,6 +183,35 @@ Example output:
   ✓ @scope/core@1.0.0 (npm fallback)
 ```
 
+## Synthetic Packages
+
+Synthetic packages are staged to `.devlink/` instead of being injected into `package.json`. They are useful for packages that need to be available locally (e.g., for tooling, `file:` references, or build-time dependencies) but should not appear as npm dependencies.
+
+Mark a package as synthetic in the config:
+
+```javascript
+packages: {
+  "@myorg/sst": { version: { dev: "0.4.0" }, synthetic: true },
+}
+```
+
+### Synthetic Resolution by Flow
+
+| Flow | Store found | Store not found |
+|------|-------------|-----------------|
+| `--npm` + store manager | Staged from store to `.devlink/` | Downloaded via `npm pack` to `.devlink/` |
+| `--npm` + npm manager | N/A (no store lookup) | Downloaded via `npm pack` to `.devlink/` |
+| Direct copy (no `--npm`) | Copied from store to `.devlink/` | Downloaded via `npm pack` to `.devlink/` |
+| No-mode + universal | N/A | Downloaded via `npm pack` to `.devlink/` |
+
+In all cases, synthetic packages end up in `.devlink/{packageName}/` and are never injected into `package.json`.
+
+Example output:
+```
+📦 Staging 1 synthetic package(s) from npm:
+  - @myorg/sst@0.4.0 (synthetic)
+```
+
 ## Resolution Process
 
 For each package in the config:

@@ -47,6 +47,24 @@ packages: {
 }
 ```
 
+### synthetic
+
+Marks a package as synthetic. Synthetic packages are staged to `.devlink/` instead of being injected into `package.json`. This is useful for packages that should be available locally (e.g., for `file:` references or tooling) but should not appear as npm dependencies.
+
+```javascript
+packages: {
+  "@myorg/sst": { version: { dev: "0.4.0" }, synthetic: true },
+  "@myorg/core": { version: "1.0.0" },  // normal package
+}
+```
+
+Synthetic packages follow the same resolution logic as normal packages:
+- **Store manager**: Resolved from the store and copied to `.devlink/{name}/`
+- **npm manager / fallback**: Downloaded via `npm pack` and extracted to `.devlink/{name}/`
+- **No-mode**: Universal synthetic packages are staged from npm to `.devlink/`
+
+In all cases, synthetic packages never appear in `package.json` — they are always staged to `.devlink/`.
+
 The universal string format is equivalent to `{ "*": "1.0.0" }` internally. It ensures the package is always resolved regardless of the active mode.
 
 You can mix both formats:
@@ -147,6 +165,9 @@ export default {
     // Per-mode versions
     "@myorg/http": { version: { dev: "1.0.0", remote: "1.0.0" } },
     "@myorg/dev-tools": { version: { dev: "1.0.0" } },  // dev only
+
+    // Synthetic — staged to .devlink/, not injected in package.json
+    "@myorg/sst": { version: { dev: "0.4.0" }, synthetic: true },
   },
 
   // Development mode: use local store

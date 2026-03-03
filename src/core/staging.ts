@@ -4,6 +4,7 @@
 
 import fs from "fs/promises";
 import path from "path";
+import { spawn } from "child_process";
 import semver from "semver";
 import type { ResolvedPackage, PackageManifest } from "../types.js";
 
@@ -143,4 +144,64 @@ export async function stageAndRelink(
   }
 
   return result;
+}
+
+/**
+ * Stage a package from npm registry into .devlink/.
+ *
+ * Uses `npm pack` to download the tarball, then extracts it into
+ * `.devlink/{packageName}/`. The tarball is cleaned up after extraction.
+ *
+ * @returns The absolute staging path, or null if the download/extraction failed.
+ */
+export async function stageFromNpm(
+  projectPath: string,
+  packageName: string,
+  version: string
+): Promise<string | null> {
+  const stagingDir = path.join(projectPath, STAGING_DIR);
+  await fs.mkdir(stagingDir, { recursive: true });
+
+  const destPath = path.join(stagingDir, packageName);
+
+  // npm pack downloads the tarball to cwd and prints the filename
+  const tarballName = await new Promise<string | null>((resolve, reject) => {
+    let stdout = "";
+    const child = spawn("npm", ["pack", `${packageName}@${version}`, "--pack-destination", stagingDir], {
+      cwd: stagingDir,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    child.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) return resolve(null);
+      resolve(stdout.trim().split("\n").pop() || null);
+    });
+  });
+
+  if (!tarballName) return null;
+
+  const tarballPath = path.join(stagingDir, tarballName);
+
+  // Extract tarball — npm pack creates tarballs with a `package/` prefix
+  await fs.rm(destPath, { recursive: true, force: true });
+  await fs.mkdir(destPath, { recursive: true });
+
+  const extractCode = await new Promise<number>((resolve, reject) => {
+    const child = spawn("tar", ["xzf", tarballPath, "--strip-components=1", "-C", destPath], {
+      stdio: "ignore",
+    });
+    child.on("error", reject);
+    child.on("close", (code) => resolve(code ?? 1));
+  });
+
+  // Clean up tarball
+  await fs.rm(tarballPath, { force: true }).catch(() => {});
+
+  if (extractCode !== 0) {
+    await fs.rm(destPath, { recursive: true, force: true }).catch(() => {});
+    return null;
+  }
+
+  return destPath;
 }

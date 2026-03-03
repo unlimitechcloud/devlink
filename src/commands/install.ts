@@ -17,7 +17,7 @@ import { readRegistry } from "../core/registry.js";
 import { readInstallations, writeInstallations, registerProject } from "../core/installations.js";
 import { resolvePackage } from "../core/resolver.js";
 import { DEFAULT_NAMESPACE, LOCKFILE_NAME, DEFAULT_CONFIG_FILES } from "../constants.js";
-import { stageAndRelink, STAGING_DIR } from "../core/staging.js";
+import { stageAndRelink, STAGING_DIR, stageFromNpm } from "../core/staging.js";
 import type { StagedPackage } from "../core/staging.js";
 import { normalizeConfig, resolveVersion, isNewFormat } from "../config.js";
 
@@ -302,17 +302,44 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     if (options.runNpm) {
       // Try to load config to find universal packages
       let universalPackages: { name: string; version: string }[] = [];
+      let syntheticUniversal: { name: string; version: string }[] = [];
       try {
         const config = await loadConfig(options.config, options.configName, options.configKey);
+        const normalized = normalizeConfig(config);
         for (const [pkgName, spec] of Object.entries(config.packages)) {
           if (isNewFormat(spec) && typeof spec.version === "string") {
-            universalPackages.push({ name: pkgName, version: spec.version });
+            if (normalized.packages[pkgName]?.synthetic) {
+              syntheticUniversal.push({ name: pkgName, version: spec.version });
+            } else {
+              universalPackages.push({ name: pkgName, version: spec.version });
+            }
           }
         }
       } catch {
         // No config found — pure npm install
       }
 
+      // Stage synthetic universal packages to .devlink/ from npm
+      if (syntheticUniversal.length > 0) {
+        console.log(`\n📦 Staging ${syntheticUniversal.length} synthetic universal package(s) from npm:`);
+        for (const pkg of syntheticUniversal) {
+          console.log(`  - ${pkg.name}@${pkg.version} (synthetic)`);
+          const staged = await stageFromNpm(projectPath, pkg.name, pkg.version);
+          if (staged) {
+            result.installed.push({
+              name: pkg.name,
+              version: pkg.version,
+              qname: `${pkg.name}@${pkg.version}`,
+              namespace: "npm-synthetic",
+            });
+          } else {
+            console.log(`  ⚠️  Failed to stage ${pkg.name}@${pkg.version} from npm`);
+            result.skipped.push({ name: pkg.name, version: pkg.version, reason: "npm staging failed" });
+          }
+        }
+      }
+
+      // Inject non-synthetic universal packages into package.json
       if (universalPackages.length > 0) {
         console.log(`\n📡 Injecting ${universalPackages.length} universal package(s):`);
         for (const pkg of universalPackages) {
@@ -451,6 +478,22 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       }
     }
     
+    // Phase 1.5: Stage synthetic packages from npm (they must go to .devlink/, not package.json)
+    const syntheticFromNpm = registryPackages.filter(p => syntheticPackages.has(p.name));
+    const nonSyntheticRegistry = registryPackages.filter(p => !syntheticPackages.has(p.name));
+    
+    if (syntheticFromNpm.length > 0) {
+      console.log(`\n📦 Staging ${syntheticFromNpm.length} synthetic package(s) from npm:`);
+      for (const pkg of syntheticFromNpm) {
+        console.log(`  - ${pkg.name}@${pkg.version} (synthetic)`);
+        const staged = await stageFromNpm(projectPath, pkg.name, pkg.version);
+        if (!staged) {
+          console.log(`  ⚠️  Failed to stage ${pkg.name}@${pkg.version} from npm`);
+          result.skipped.push({ name: pkg.name, version: pkg.version, reason: "npm staging failed" });
+        }
+      }
+    }
+    
     // Phase 2: Stage + Re-link (only for store manager)
     if (resolvedPackages.length > 0) {
       console.log(`\n📦 Staging ${resolvedPackages.length} package(s) to ${STAGING_DIR}/...`);
@@ -468,7 +511,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     }
     
     // Phase 3: Inject into local package.json only
-    await injectStagedPackages(projectPath, staging.staged, removePackageNames, registryPackages, syntheticPackages);
+    await injectStagedPackages(projectPath, staging.staged, removePackageNames, nonSyntheticRegistry, syntheticPackages);
     result.removed = removePackageNames;
     
     // Phase 4: npm install
@@ -545,16 +588,36 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   }
 
   for (const [pkgName, spec] of Object.entries(config.packages)) {
-    if (syntheticPackages.has(pkgName)) continue;
     const version = resolveVersion(spec, mode);
     if (!version) {
       result.skipped.push({ name: pkgName, version: "N/A", reason: `No ${mode} version specified` });
       continue;
     }
+
+    const isSynthetic = syntheticPackages.has(pkgName);
     
     const resolution = resolvePackage(pkgName, version, namespaces, registry);
     if (!resolution.found) {
-      // Fallback to npm when not found in store
+      if (isSynthetic) {
+        // Synthetic fallback: stage from npm to .devlink/
+        console.log(`  ⚠️  ${pkgName}@${version} not found in store (${namespaces.join(", ")}), staging from npm (synthetic)`);
+        const staged = await stageFromNpm(projectPath, pkgName, version);
+        if (staged) {
+          result.installed.push({
+            name: pkgName,
+            version,
+            qname: `${pkgName}@${version}`,
+            namespace: "npm-synthetic",
+          });
+          console.log(`  ✓ ${pkgName}@${version} (npm synthetic staging)`);
+        } else {
+          result.skipped.push({ name: pkgName, version, reason: "npm synthetic staging failed" });
+          console.log(`  ⚠️  Failed to stage ${pkgName}@${version} from npm`);
+        }
+        continue;
+      }
+
+      // Non-synthetic fallback: npm install --no-save
       console.log(`  ⚠️  ${pkgName}@${version} not found in store (${namespaces.join(", ")}), falling back to npm`);
       try {
         const exitCode = await new Promise<number>((resolve, reject) => {
@@ -590,6 +653,23 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       } catch (err: any) {
         result.skipped.push({ name: pkgName, version, reason: `npm fallback failed: ${err.message}` });
       }
+      continue;
+    }
+
+    // Synthetic packages found in store: stage to .devlink/ (skip node_modules copy)
+    if (isSynthetic) {
+      const stagingDir = path.join(projectPath, STAGING_DIR);
+      const destPath = path.join(stagingDir, pkgName);
+      await fs.mkdir(stagingDir, { recursive: true });
+      await fs.rm(destPath, { recursive: true, force: true });
+      await copyDir(resolution.path!, destPath);
+      result.installed.push({
+        name: pkgName,
+        version,
+        qname: `${pkgName}@${version}`,
+        namespace: resolution.namespace!,
+      });
+      console.log(`  ✓ ${pkgName}@${version} [${resolution.namespace}] (synthetic → .devlink/)`);
       continue;
     }
     

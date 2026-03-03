@@ -39,6 +39,7 @@ Environment: `DEVLINK_REPO` can be used instead of `--repo`.
 - **Namespaces**: Isolated containers (`global` is default and reserved). Same package@version can exist in multiple namespaces
 - **Registry**: `registry.json` indexes all published packages with signatures
 - **Installations**: `installations.json` tracks which projects consume which packages
+- **Synthetic packages**: Packages marked `synthetic: true` are staged to `.devlink/` instead of `package.json` — useful for tooling and build-time dependencies
 - **File Locking**: Write operations acquire exclusive locks to prevent corruption
 
 For details on store internals, see `docs store/`.

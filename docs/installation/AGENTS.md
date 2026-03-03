@@ -20,10 +20,10 @@ When no mode is specified, DevLink skips package resolution entirely and only ru
 
 ## Install Flows
 
-- **No mode** (`--npm` without `--mode`): Resolves universal packages (`version: "1.0.0"`) and injects them into `package.json` for npm to resolve. Per-mode packages are skipped. Useful for projects that only use universal versions.
-- **Direct copy** (default with mode): Copies packages directly to `node_modules/`. Falls back to `npm install --no-save` for packages not found in the store.
-- **Staging flow** (`--npm` + store manager): Stages packages locally, rewrites internal dependencies to `file:` paths, then runs `npm install`. Packages not found in the store are injected as registry packages.
-- **Registry flow** (`--npm` + npm manager): Injects packages as exact versions into temporary `package.json`, npm resolves from registry
+- **No mode** (`--npm` without `--mode`): Resolves universal packages (`version: "1.0.0"`) and injects them into `package.json` for npm to resolve. Synthetic universal packages are staged to `.devlink/` via `npm pack`. Per-mode packages are skipped. Useful for projects that only use universal versions.
+- **Direct copy** (default with mode): Copies packages directly to `node_modules/`. Synthetic packages are copied to `.devlink/` instead. Falls back to `npm install --no-save` for non-synthetic packages not found in the store; synthetic fallbacks use `npm pack` to `.devlink/`.
+- **Staging flow** (`--npm` + store manager): Stages packages locally, rewrites internal dependencies to `file:` paths, then runs `npm install`. Synthetic packages not found in the store are staged from npm via `npm pack`. Non-synthetic packages not found in the store are injected as registry packages.
+- **Registry flow** (`--npm` + npm manager): Injects non-synthetic packages as exact versions into temporary `package.json`, npm resolves from registry. Synthetic packages are staged to `.devlink/` via `npm pack`.
 
 Use `--npm` when your DevLink packages have internal dependencies on each other, or when using a remote registry.
 
@@ -41,6 +41,7 @@ Packages without a version for the current mode are removed from `package.json` 
 
 Projects use `devlink.config.mjs` to define:
 - Which packages to manage and their versions (per-mode object or universal string)
+- Synthetic flag for packages that should be staged to `.devlink/` instead of `package.json`
 - Mode factories (top-level properties like `dev`, `remote`)
 - Mode detection logic (`detectMode`)
 - Namespace precedence (for store manager)
