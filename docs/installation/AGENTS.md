@@ -16,9 +16,12 @@ DevLink supports dynamic modes defined in the config (e.g. `dev`, `remote`, `sta
 - **store**: Resolves packages from the local DevLink store
 - **npm**: Packages are resolved by npm from a configured registry (e.g. GitHub Packages)
 
+When no mode is specified, DevLink skips package resolution entirely and only runs `npm install` (if `--npm` is set).
+
 ## Install Flows
 
-- **Direct copy** (default): Copies packages directly to `node_modules/`
+- **No mode** (`--npm` without `--mode`): Runs `npm install` only, no config loading or package resolution. Useful for monorepo orchestration without DevLink package management.
+- **Direct copy** (default with mode): Copies packages directly to `node_modules/`
 - **Staging flow** (`--npm` + store manager): Stages packages locally, rewrites internal dependencies to `file:` paths, then runs `npm install`
 - **Registry flow** (`--npm` + npm manager): Injects packages as exact versions into temporary `package.json`, npm resolves from registry
 

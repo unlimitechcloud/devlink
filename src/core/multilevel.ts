@@ -113,7 +113,7 @@ export async function installMultiLevel(
  */
 async function installAtRootLevel(
   level: InstallLevel,
-  mode: string,
+  mode: string | undefined,
   runNpm: boolean,
   runScripts?: boolean,
   configOverride?: string,

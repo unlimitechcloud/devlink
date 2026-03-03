@@ -294,6 +294,16 @@ async function runNpmInstall(runScripts: boolean = false): Promise<number> {
  */
 export async function installPackages(options: InstallOptions = {}): Promise<InstallResult> {
   const projectPath = process.cwd();
+
+  // ── No mode: npm-only install (no DevLink package resolution) ──────────
+  if (!options.mode) {
+    const result: InstallResult = { installed: [], removed: [], skipped: [] };
+    if (options.runNpm) {
+      result.npmExitCode = await runNpmInstall(options.runScripts);
+    }
+    return result;
+  }
+
   const config = await loadConfig(options.config, options.configName, options.configKey);
   
   // Normalize config once at the top level
@@ -312,7 +322,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   }
   
   // Determine mode from CLI flag
-  const mode: string = options.mode || "dev";
+  const mode: string = options.mode;
   
   // Get mode config
   const ctx = {

@@ -12,7 +12,7 @@ dev-link install [options]
 
 | Option | Description |
 |--------|-------------|
-| `-m, --mode <name>` | Set install mode (e.g. `dev`, `remote`) |
+| `-m, --mode <name>` | Set install mode (e.g. `dev`, `remote`). When omitted, runs npm-only without package resolution |
 | `-n, --namespaces <list>` | Override namespace precedence (comma-separated) |
 | `-c, --config <path>` | Path to config file |
 | `--dev` | Force dev mode (shorthand for `--mode dev`) |
@@ -24,7 +24,7 @@ dev-link install [options]
 
 The `install` command:
 
-1. Reads `devlink.config.mjs` from the project
+1. Reads `devlink.config.mjs` from the project (if available)
 2. Determines the mode (via `--mode`, `--dev`/`--prod` shorthands, or `detectMode`)
 3. Resolves packages using namespace precedence (store manager) or injects them for registry resolution (npm manager)
 4. Removes packages that don't have a version for the current mode
@@ -32,6 +32,8 @@ The `install` command:
 6. Cleans broken bin symlinks and links new bin entries into `node_modules/.bin/`
 7. Registers the project as a consumer
 8. Creates/updates `devlink.lock`
+
+When `--mode` is omitted, the command skips steps 2–7 and only runs `npm install` (if `--npm` is set). This is useful for projects that use DevLink for monorepo tree scanning and recursive install orchestration but don't need DevLink package resolution.
 
 ## Configuration File
 
@@ -66,6 +68,15 @@ export default {
 See [Configuration](configuration.md) for full reference.
 
 ## Examples
+
+### npm-only Install (no mode)
+
+```bash
+dev-link install --npm                    # npm install only, no package resolution
+dev-link install --recursive --npm        # Recursive npm install across monorepo levels
+```
+
+When no `--mode` is specified, DevLink skips config loading and package resolution entirely. Only `npm install` runs. Combined with `--recursive`, this provides multi-level npm install orchestration without any DevLink store interaction.
 
 ### Basic Install
 
@@ -127,7 +138,17 @@ The mode is determined by (in priority order):
 1. `--mode <name>` CLI flag
 2. `--dev` / `--prod` shorthand flags
 3. `detectMode()` function in config
-4. Default: `"dev"`
+4. If none specified → no mode (npm-only install, no package resolution)
+
+### No-Mode Behavior
+
+When no mode is specified (no `--mode`, no `--dev`/`--prod`, no `detectMode`), the install command:
+- Does not load or require a config file
+- Does not resolve packages from the store or registry
+- Only runs `npm install` if `--npm` is set
+- Returns an empty result (no installed, removed, or skipped packages)
+
+This is useful for monorepo orchestration where DevLink handles the recursive tree scanning and multi-level npm install, but the project doesn't use DevLink for package management.
 
 ## Package Removal
 

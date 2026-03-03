@@ -78,7 +78,7 @@ This publishes the new version AND automatically updates all consumer projects.
 |---------|-------------|----------------|
 | `publish` | Publish package to the store | `-n, --namespace` |
 | `push` | Publish and update all consumers | `-n, --namespace` |
-| `install` | Install packages from store/registry | `-m, --mode`, `--dev`, `--npm` |
+| `install` | Install packages from store/registry | `-m, --mode`, `--dev`, `--npm`, `--recursive` |
 | `list` | List packages in store | `-n`, `-p`, `--flat` |
 | `resolve` | Debug package resolution | `-n, --namespaces` |
 | `consumers` | List/manage consumer projects | `--prune` |
@@ -111,14 +111,16 @@ dev-link push -n feature-v2         # Push to specific namespace
 
 #### `dev-link install`
 
-Installs packages from the store or registry based on your `devlink.config.mjs`.
+Installs packages from the store or registry based on your `devlink.config.mjs`. When no mode is specified, runs npm-only install without package resolution.
 
 ```bash
-dev-link install                        # Install using default/detected mode
+dev-link install                        # npm-only (no package resolution)
+dev-link install --npm                  # npm-only with npm install
 dev-link install --mode dev --npm       # Dev mode with npm integration
 dev-link install --mode remote --npm    # Remote mode (registry resolution)
 dev-link install --dev --npm            # Shorthand for --mode dev
 dev-link install -n feature,global      # Override namespace precedence
+dev-link install --recursive --npm      # Recursive npm install across monorepo
 ```
 
 #### `dev-link list`
@@ -393,10 +395,11 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.0.2] - 2026-03-02
+### Latest: [2.1.0] - 2026-03-03
 
-- Updated package description and npm keywords for improved discoverability
-- Added `tree` command documentation to README
+- No-mode install: `--npm` without `--mode` runs npm-only install across all monorepo levels
+- `--mode` is now optional — omit it for pure npm install without package resolution
+- Updated install documentation to reflect no-mode behavior
 
 📄 [Full Changelog](CHANGELOG.md)
 

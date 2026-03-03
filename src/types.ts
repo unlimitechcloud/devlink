@@ -360,8 +360,8 @@ export interface ScanOptions {
 export interface MultiLevelInstallOptions {
   /** Árbol del monorepo producido por scanTree */
   tree: MonorepoTree;
-  /** Modo de instalación (ej: "dev", "remote") */
-  mode: string;
+  /** Modo de instalación (ej: "dev", "remote"). undefined = npm-only, sin resolución DevLink */
+  mode?: string;
   /** Ejecutar npm install */
   runNpm: boolean;
   /** Ejecutar scripts de npm */

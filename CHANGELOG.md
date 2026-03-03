@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-03-03
+
+### Added
+- No-mode install: `dev-link install --npm` without `--mode` runs npm install at all levels without DevLink package resolution — no config loading, no staging, no store injection
+- Tests for no-mode install behavior in multilevel installer
+
+### Changed
+- `--mode` is no longer required for `install` command — when omitted, only npm install runs
+- `MultiLevelInstallOptions.mode` is now optional (`string | undefined`)
+- Updated install documentation (install.md, AGENTS.md, README.md) to reflect no-mode behavior
+
 ## [2.0.2] - 2026-03-02
 
 ### Changed

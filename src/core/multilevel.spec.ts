@@ -317,4 +317,61 @@ describe("Multi-Level Installer", () => {
     expect(result.levels[0].duration).toBeGreaterThanOrEqual(0);
   });
 
+  // =========================================================================
+  // No mode (npm-only, no DevLink package resolution)
+  // =========================================================================
+  it("passes undefined mode to installPackages when mode is omitted", async () => {
+    await ensureDirs(tmpDir);
+
+    const tree = makeTree();
+
+    const result = await installMultiLevel({
+      tree,
+      runNpm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(installPackages).toHaveBeenCalledTimes(1);
+    expect(installPackages).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: undefined, runNpm: true }),
+    );
+  });
+
+  it("processes root and isolated packages when mode is omitted", async () => {
+    const isoPath = path.join(tmpDir, "packages", "iso");
+    await ensureDirs(tmpDir, isoPath);
+
+    const tree = makeTree({
+      isolatedPackages: [isoPath],
+    });
+
+    const result = await installMultiLevel({
+      tree,
+      runNpm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.levels).toHaveLength(2);
+    expect(result.levels[0].relativePath).toBe(".");
+    expect(result.levels[1].relativePath).toContain("iso");
+  });
+
+  it("skips isolated npm when runNpm is false and mode is omitted", async () => {
+    const isoPath = path.join(tmpDir, "packages", "iso");
+    await ensureDirs(tmpDir, isoPath);
+
+    const tree = makeTree({
+      isolatedPackages: [isoPath],
+    });
+
+    const result = await installMultiLevel({
+      tree,
+      runNpm: false,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.levels).toHaveLength(2);
+    expect(result.levels[1].duration).toBe(0);
+  });
+
 });

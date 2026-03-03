@@ -119,7 +119,7 @@ program
       const { scanTree } = await import("./core/tree.js");
       const { installMultiLevel } = await import("./core/multilevel.js");
 
-      const mode = opts.mode || (opts.prod ? "prod" : opts.dev ? "dev" : "dev");
+      const mode = opts.mode || (opts.prod ? "prod" : opts.dev ? "dev" : undefined);
 
       console.log(`📂 Scanning monorepo...`);
       const tree = await scanTree(process.cwd());
