@@ -19,7 +19,7 @@ import { resolvePackage } from "../core/resolver.js";
 import { DEFAULT_NAMESPACE, LOCKFILE_NAME, DEFAULT_CONFIG_FILES } from "../constants.js";
 import { stageAndRelink, STAGING_DIR } from "../core/staging.js";
 import type { StagedPackage } from "../core/staging.js";
-import { normalizeConfig, resolveVersion } from "../config.js";
+import { normalizeConfig, resolveVersion, isNewFormat } from "../config.js";
 
 /**
  * Load configuration file.
@@ -295,10 +295,41 @@ async function runNpmInstall(runScripts: boolean = false): Promise<number> {
 export async function installPackages(options: InstallOptions = {}): Promise<InstallResult> {
   const projectPath = process.cwd();
 
-  // ── No mode: npm-only install (no DevLink package resolution) ──────────
+  // ── No mode: resolve universal packages + npm install ──────────────────
   if (!options.mode) {
     const result: InstallResult = { installed: [], removed: [], skipped: [] };
+
     if (options.runNpm) {
+      // Try to load config to find universal packages
+      let universalPackages: { name: string; version: string }[] = [];
+      try {
+        const config = await loadConfig(options.config, options.configName, options.configKey);
+        for (const [pkgName, spec] of Object.entries(config.packages)) {
+          if (isNewFormat(spec) && typeof spec.version === "string") {
+            universalPackages.push({ name: pkgName, version: spec.version });
+          }
+        }
+      } catch {
+        // No config found — pure npm install
+      }
+
+      if (universalPackages.length > 0) {
+        console.log(`\n📡 Injecting ${universalPackages.length} universal package(s):`);
+        for (const pkg of universalPackages) {
+          console.log(`  - ${pkg.name}@${pkg.version}`);
+        }
+        await injectStagedPackages(projectPath, [], [], universalPackages);
+
+        for (const pkg of universalPackages) {
+          result.installed.push({
+            name: pkg.name,
+            version: pkg.version,
+            qname: `${pkg.name}@${pkg.version}`,
+            namespace: "registry",
+          });
+        }
+      }
+
       result.npmExitCode = await runNpmInstall(options.runScripts);
     }
     return result;

@@ -73,7 +73,7 @@ dev-link push                 # Publish + update all consumers
 ```bash
 dev-link install --dev        # Install from store using devlink.config.mjs
 dev-link install --dev --npm  # With npm dependency resolution
-dev-link install --npm        # npm-only install (no package resolution)
+dev-link install --npm        # Universal packages + npm install (no mode)
 ```
 
 ### Feature Branch Isolation

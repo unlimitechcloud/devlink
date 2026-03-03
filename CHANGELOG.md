@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.1] - 2026-03-03
+
+### Fixed
+- No-mode install now resolves universal packages (`version: "1.0.0"`) — previously skipped all package resolution when no mode was specified
+- Universal packages are injected into `package.json` and resolved via `npm install` regardless of mode
+
+### Changed
+- Updated no-mode documentation (install.md, AGENTS.md, README) to reflect universal package resolution behavior
+
 ## [2.2.0] - 2026-03-03
 
 ### Added

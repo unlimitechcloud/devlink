@@ -33,7 +33,13 @@ The `install` command:
 7. Registers the project as a consumer
 8. Creates/updates `devlink.lock`
 
-When `--mode` is omitted, the command skips steps 2–7 and only runs `npm install` (if `--npm` is set). This is useful for projects that use DevLink for monorepo tree scanning and recursive install orchestration but don't need DevLink package resolution.
+When `--mode` is omitted, the command:
+- Loads the config file (if available)
+- Resolves packages with universal versions (`version: "1.0.0"`) — these are injected into `package.json` for npm to resolve
+- Skips packages with per-mode versions (since no mode is active)
+- Runs `npm install` if `--npm` is set
+
+This means universal packages are always resolved regardless of mode, while per-mode packages require an explicit mode to be installed.
 
 ## Configuration File
 
@@ -68,14 +74,14 @@ See [Configuration](configuration.md) for full reference.
 
 ## Examples
 
-### npm-only Install (no mode)
+### Install without Mode (universal packages only)
 
 ```bash
-dev-link install --npm                    # npm install only, no package resolution
-dev-link install --recursive --npm        # Recursive npm install across monorepo levels
+dev-link install --npm                    # Resolves universal packages + npm install
+dev-link install --recursive --npm        # Recursive across monorepo levels
 ```
 
-When no `--mode` is specified, DevLink skips config loading and package resolution entirely. Only `npm install` runs. Combined with `--recursive`, this provides multi-level npm install orchestration without any DevLink store interaction.
+When no `--mode` is specified, DevLink resolves only packages with universal versions (`version: "1.0.0"`), injects them into `package.json`, and runs `npm install`. Per-mode packages are ignored.
 
 ### Basic Install
 
@@ -142,12 +148,12 @@ The mode is determined by (in priority order):
 ### No-Mode Behavior
 
 When no mode is specified (no `--mode`, no `--dev`/`--prod`, no `detectMode`), the install command:
-- Does not load or require a config file
-- Does not resolve packages from the store or registry
-- Only runs `npm install` if `--npm` is set
-- Returns an empty result (no installed, removed, or skipped packages)
+- Loads the config file if available
+- Resolves packages with universal versions (`version: "1.0.0"`) — injected into `package.json` as registry dependencies
+- Skips packages with per-mode versions (no active mode to match)
+- Runs `npm install` if `--npm` is set
 
-This is useful for monorepo orchestration where DevLink handles the recursive tree scanning and multi-level npm install, but the project doesn't use DevLink for package management.
+This ensures universal packages are always installed regardless of mode. Projects that only use universal versions can omit the mode entirely.
 
 ## Package Removal
 

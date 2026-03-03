@@ -20,7 +20,7 @@ When no mode is specified, DevLink skips package resolution entirely and only ru
 
 ## Install Flows
 
-- **No mode** (`--npm` without `--mode`): Runs `npm install` only, no config loading or package resolution. Useful for monorepo orchestration without DevLink package management.
+- **No mode** (`--npm` without `--mode`): Resolves universal packages (`version: "1.0.0"`) and injects them into `package.json` for npm to resolve. Per-mode packages are skipped. Useful for projects that only use universal versions.
 - **Direct copy** (default with mode): Copies packages directly to `node_modules/`. Falls back to `npm install --no-save` for packages not found in the store.
 - **Staging flow** (`--npm` + store manager): Stages packages locally, rewrites internal dependencies to `file:` paths, then runs `npm install`. Packages not found in the store are injected as registry packages.
 - **Registry flow** (`--npm` + npm manager): Injects packages as exact versions into temporary `package.json`, npm resolves from registry

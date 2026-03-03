@@ -115,8 +115,8 @@ dev-link push -n feature-v2         # Push to specific namespace
 Installs packages from the store or registry based on your `devlink.config.mjs`. When using the store manager, packages not found in the store automatically fall back to npm with a warning. When no mode is specified, runs npm-only install without package resolution.
 
 ```bash
-dev-link install                        # npm-only (no package resolution)
-dev-link install --npm                  # npm-only with npm install
+dev-link install                        # No resolution (no --npm)
+dev-link install --npm                  # Universal packages + npm install
 dev-link install --mode dev --npm       # Dev mode with npm integration
 dev-link install --mode remote --npm    # Remote mode (registry resolution)
 dev-link install --dev --npm            # Shorthand for --mode dev
@@ -396,12 +396,11 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.2.0] - 2026-03-03
+### Latest: [2.2.1] - 2026-03-03
 
-- Universal version format: `version: "1.0.0"` applies to all modes (alongside per-mode object format)
-- npm fallback for store manager: packages not found in the store fall back to npm with a `⚠️` warning
-- `resolveVersion(spec, mode)` helper exported from config module
-- Updated installation docs and README for new features
+- No-mode install now resolves universal packages (`version: "1.0.0"`) — injected into `package.json` for npm to resolve
+- Universal packages are always installed regardless of mode
+- Updated no-mode documentation to reflect correct behavior
 
 📄 [Full Changelog](CHANGELOG.md)
 
