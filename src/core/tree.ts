@@ -47,9 +47,18 @@ export async function scanTree(
 
   const rootWorkspaces: string[] = extractWorkspaces(rootPkg);
   if (rootWorkspaces.length === 0) {
-    throw new Error(
-      `package.json in ${resolvedRoot} has no "workspaces" field. The tree scanner requires a monorepo root with workspaces.`,
-    );
+    // Single package (no workspaces) — return tree with root as the only module
+    const rootModule = await scanModule(resolvedRoot, resolvedRoot, []);
+    return {
+      root: resolvedRoot,
+      modules: [rootModule],
+      installLevels: [{
+        path: resolvedRoot,
+        relativePath: ".",
+        workspaces: [],
+      }],
+      isolatedPackages: [],
+    };
   }
 
   const modules: MonorepoModule[] = [];

@@ -189,11 +189,16 @@ describe("Tree Scanner", () => {
       await expect(scanTree(emptyDir)).rejects.toThrow(/package\.json/i);
     });
 
-    it("throws when package.json has no workspaces", async () => {
+    it("returns single-module tree when package.json has no workspaces", async () => {
       const noWsDir = path.join(tmpDir, "no-ws");
       await createPackageJson(noWsDir, { name: "no-ws" });
 
-      await expect(scanTree(noWsDir)).rejects.toThrow(/workspaces/i);
+      const tree = await scanTree(noWsDir);
+      expect(tree.modules).toHaveLength(1);
+      expect(tree.modules[0].name).toBe("no-ws");
+      expect(tree.installLevels).toHaveLength(1);
+      expect(tree.installLevels[0].workspaces).toEqual([]);
+      expect(tree.isolatedPackages).toEqual([]);
     });
   });
 

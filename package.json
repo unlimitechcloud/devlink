@@ -1,6 +1,6 @@
 {
   "name": "@unlimitechcloud/devlink",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Package management utility for npm projects and monorepos — local library development with namespace-isolated store, environment-based install modes for local and published registry workflows, and declarative configuration",
   "type": "module",
   "main": "dist/index.js",

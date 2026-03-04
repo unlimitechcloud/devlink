@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.3] - 2026-03-04
+
+### Fixed
+- `dev-link tree` no longer crashes when `package.json` has no `workspaces` field or an empty array — returns a single-module tree instead
+
 ## [2.2.2] - 2026-03-03
 
 ### Added

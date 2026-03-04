@@ -398,11 +398,9 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.2.2] - 2026-03-03
+### Latest: [2.2.3] - 2026-03-04
 
-- Synthetic packages (`synthetic: true`) are now staged to `.devlink/` in all flows (store, npm, no-mode)
-- Packages not found in the store are downloaded via `npm pack` and extracted to `.devlink/`
-- Synthetic packages never appear in `package.json`
+- `dev-link tree` no longer crashes on projects without `workspaces` — treats them as single-package projects
 
 📄 [Full Changelog](CHANGELOG.md)
 

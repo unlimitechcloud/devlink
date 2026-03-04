@@ -362,15 +362,16 @@ describe("Tree Command (fixture-based)", () => {
       expect(errorOutput[0]).toContain("package.json");
     });
 
-    it("outputs error for package.json without workspaces", async () => {
+    it("outputs tree for package.json without workspaces", async () => {
       const noWsDir = path.join(tmpDir, "no-ws");
       await createPackageJson(noWsDir, { name: "no-ws" });
       process.chdir(noWsDir);
 
-      await expect(handleTree({ json: true })).rejects.toThrow("process.exit(1)");
+      await handleTree({ json: true });
 
-      const parsed = JSON.parse(errorOutput[0]);
-      expect(parsed.error).toContain("workspaces");
+      const parsed = JSON.parse(logOutput[logOutput.length - 1]);
+      expect(parsed.modules).toHaveLength(1);
+      expect(parsed.modules[0].name).toBe("no-ws");
     });
   });
 });
