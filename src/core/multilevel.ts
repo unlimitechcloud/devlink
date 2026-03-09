@@ -126,7 +126,7 @@ async function installAtRootLevel(
   try {
     process.chdir(level.path);
     try {
-      await installPackages({
+      const result = await installPackages({
         mode,
         runNpm,
         runScripts,
@@ -134,6 +134,29 @@ async function installAtRootLevel(
         configName,
         configKey,
       });
+
+      // Check for npm install failure
+      if (runNpm && result.npmExitCode !== undefined && result.npmExitCode !== 0) {
+        return {
+          path: level.path,
+          relativePath: level.relativePath,
+          success: false,
+          duration: Date.now() - startTime,
+          error: `npm install exited with code ${result.npmExitCode}`,
+        };
+      }
+
+      // Check for skipped packages (resolution failures)
+      if (result.skipped.length > 0) {
+        return {
+          path: level.path,
+          relativePath: level.relativePath,
+          success: false,
+          duration: Date.now() - startTime,
+          error: `${result.skipped.length} package(s) failed to resolve: ${result.skipped.map(s => `${s.name}@${s.version}`).join(", ")}`,
+        };
+      }
+
       return {
         path: level.path,
         relativePath: level.relativePath,

@@ -398,12 +398,10 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.3.0] - 2026-03-09
+### Latest: [2.3.1] - 2026-03-09
 
-- Bidirectional fallback resolution: npm-primary flows fall back to the store, store-primary flows fall back to npm — per-package
-- `checkNpmExists()` for granular per-package npm availability checks
-- No-mode and npm-manager flows now have store fallback when npm is unavailable
-- Updated all installation documentation for new fallback behavior
+- Install command now exits with code 1 on resolution failures or npm install errors
+- Multilevel installer propagates failures correctly instead of returning success
 
 📄 [Full Changelog](CHANGELOG.md)
 

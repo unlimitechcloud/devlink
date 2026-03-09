@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.1] - 2026-03-09
+
+### Fixed
+- Install command now exits with code 1 when package resolution fails (skipped packages) or npm install returns a non-zero exit code — previously returned 0 in both cases
+- Multilevel installer (`--recursive`) now propagates npm install failures and skipped packages as level failures instead of silently succeeding
+
 ## [2.3.0] - 2026-03-09
 
 ### Added

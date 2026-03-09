@@ -933,6 +933,11 @@ export async function handleInstall(args: {
         process.exit(result.npmExitCode || 1);
       }
     }
+
+    // Exit with error if any packages were skipped (resolution failures)
+    if (result.skipped.length > 0) {
+      process.exit(1);
+    }
   } catch (error: any) {
     console.error(`✗ Install failed: ${error.message}`);
     process.exit(1);
