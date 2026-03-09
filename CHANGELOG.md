@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.2] - 2026-03-09
+
+### Added
+- Unit tests for exit code propagation in multilevel installer: skipped packages, npm failures, combined failures, fail-fast behavior, and success cases
+
 ## [2.3.1] - 2026-03-09
 
 ### Fixed

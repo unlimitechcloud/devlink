@@ -374,4 +374,158 @@ describe("Multi-Level Installer", () => {
     expect(result.levels[1].duration).toBe(0);
   });
 
+  // =========================================================================
+  // Exit code propagation — skipped packages
+  // =========================================================================
+  it("returns success=false when installPackages has skipped packages", async () => {
+    await ensureDirs(tmpDir);
+
+    vi.mocked(installPackages).mockResolvedValueOnce({
+      installed: [],
+      removed: [],
+      skipped: [{ name: "@webforgeai/sst", version: "0.5.0", reason: "not found in npm or store (global)" }],
+      npmExitCode: 0,
+    } as any);
+
+    const tree = makeTree();
+
+    const result = await installMultiLevel({
+      tree,
+      runNpm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.levels).toHaveLength(1);
+    expect(result.levels[0].success).toBe(false);
+    expect(result.levels[0].error).toContain("@webforgeai/sst@0.5.0");
+  });
+
+  // =========================================================================
+  // Exit code propagation — npm install failure
+  // =========================================================================
+  it("returns success=false when npmExitCode is non-zero", async () => {
+    await ensureDirs(tmpDir);
+
+    vi.mocked(installPackages).mockResolvedValueOnce({
+      installed: [],
+      removed: [],
+      skipped: [],
+      npmExitCode: 1,
+    } as any);
+
+    const tree = makeTree();
+
+    const result = await installMultiLevel({
+      tree,
+      runNpm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.levels).toHaveLength(1);
+    expect(result.levels[0].success).toBe(false);
+    expect(result.levels[0].error).toContain("npm install exited with code 1");
+  });
+
+  // =========================================================================
+  // Exit code propagation — both skipped and npm failure
+  // =========================================================================
+  it("returns success=false when both skipped packages and npm failure occur", async () => {
+    await ensureDirs(tmpDir);
+
+    vi.mocked(installPackages).mockResolvedValueOnce({
+      installed: [{ name: "@scope/core", version: "1.0.0", qname: "@scope/core@1.0.0", namespace: "registry" }],
+      removed: [],
+      skipped: [{ name: "@webforgeai/sst", version: "0.5.0", reason: "not found in npm or store" }],
+      npmExitCode: 1,
+    } as any);
+
+    const tree = makeTree();
+
+    const result = await installMultiLevel({
+      tree,
+      runNpm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.levels[0].success).toBe(false);
+    // npm failure is checked first
+    expect(result.levels[0].error).toContain("npm install exited with code 1");
+  });
+
+  // =========================================================================
+  // Exit code propagation — skipped does NOT block isolated packages
+  // =========================================================================
+  it("does not run isolated packages when root has skipped packages", async () => {
+    const isoPath = path.join(tmpDir, "packages", "iso");
+    await ensureDirs(tmpDir, isoPath);
+
+    vi.mocked(installPackages).mockResolvedValueOnce({
+      installed: [],
+      removed: [],
+      skipped: [{ name: "@scope/pkg", version: "1.0.0", reason: "not found" }],
+      npmExitCode: 0,
+    } as any);
+
+    const tree = makeTree({
+      isolatedPackages: [isoPath],
+    });
+
+    const result = await installMultiLevel({
+      tree,
+      runNpm: true,
+    });
+
+    expect(result.success).toBe(false);
+    // Fail-fast: only root level, isolated not attempted
+    expect(result.levels).toHaveLength(1);
+  });
+
+  // =========================================================================
+  // Exit code propagation — success when no skipped and npm ok
+  // =========================================================================
+  it("returns success=true when no skipped packages and npmExitCode is 0", async () => {
+    await ensureDirs(tmpDir);
+
+    vi.mocked(installPackages).mockResolvedValueOnce({
+      installed: [{ name: "@scope/core", version: "1.0.0", qname: "@scope/core@1.0.0", namespace: "global" }],
+      removed: [],
+      skipped: [],
+      npmExitCode: 0,
+    } as any);
+
+    const tree = makeTree();
+
+    const result = await installMultiLevel({
+      tree,
+      runNpm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.levels[0].success).toBe(true);
+  });
+
+  // =========================================================================
+  // Exit code propagation — npmExitCode undefined (no --npm) is not failure
+  // =========================================================================
+  it("returns success=true when npmExitCode is undefined (no --npm flag)", async () => {
+    await ensureDirs(tmpDir);
+
+    vi.mocked(installPackages).mockResolvedValueOnce({
+      installed: [],
+      removed: [],
+      skipped: [],
+    } as any);
+
+    const tree = makeTree();
+
+    const result = await installMultiLevel({
+      tree,
+      mode: "dev",
+      runNpm: false,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.levels[0].success).toBe(true);
+  });
+
 });

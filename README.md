@@ -398,10 +398,10 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.3.1] - 2026-03-09
+### Latest: [2.3.2] - 2026-03-09
 
-- Install command now exits with code 1 on resolution failures or npm install errors
-- Multilevel installer propagates failures correctly instead of returning success
+- Unit tests for exit code propagation in multilevel installer
+- Install command exits with code 1 on resolution failures or npm install errors (v2.3.1)
 
 📄 [Full Changelog](CHANGELOG.md)
 
