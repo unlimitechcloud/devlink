@@ -13,7 +13,7 @@ When developing multiple packages locally, you need a way to test changes across
 - **Multi-version support** - Test multiple versions of the same package simultaneously across different projects
 - **Automatic consumer updates** - Push changes to all dependent projects with one command
 - **Declarative configuration** - Define dependencies in a config file, not CLI flags
-- **npm fallback** - Packages not yet in the local store are automatically resolved from npm, with clear warnings
+- **npm fallback** - Packages not found in the local store automatically fall back to npm, and vice versa — bidirectional per-package fallback with clear warnings
 - **Synthetic packages** - Stage packages to `.devlink/` for tooling and build-time use without polluting `package.json`
 
 ## Installation
@@ -113,7 +113,7 @@ dev-link push -n feature-v2         # Push to specific namespace
 
 #### `dev-link install`
 
-Installs packages from the store or registry based on your `devlink.config.mjs`. When using the store manager, packages not found in the store automatically fall back to npm with a warning. When no mode is specified, runs npm-only install without package resolution.
+Installs packages from the store or registry based on your `devlink.config.mjs`. Resolution uses bidirectional fallback: store-primary flows fall back to npm, and npm-primary flows fall back to the store — per-package, with clear warnings. When no mode is specified, universal packages are resolved with npm as primary and store (global) as fallback.
 
 ```bash
 dev-link install                        # No resolution (no --npm)
@@ -321,7 +321,7 @@ Replace `npm install` with DevLink during development using npm lifecycle hooks:
 ```
 
 - `dev:install` — resolves packages from the local DevLink store via staging + `file:` protocol. Packages not found in the store fall back to npm automatically.
-- `remote:install` — injects exact versions into `package.json` for npm to resolve from a configured registry (e.g. GitHub Packages)
+- `remote:install` — resolves packages from npm registry, verified per-package via `npm view`. Packages not found in npm fall back to the local store.
 
 ## Use with AI Agents
 
@@ -398,9 +398,12 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.2.3] - 2026-03-04
+### Latest: [2.3.0] - 2026-03-09
 
-- `dev-link tree` no longer crashes on projects without `workspaces` — treats them as single-package projects
+- Bidirectional fallback resolution: npm-primary flows fall back to the store, store-primary flows fall back to npm — per-package
+- `checkNpmExists()` for granular per-package npm availability checks
+- No-mode and npm-manager flows now have store fallback when npm is unavailable
+- Updated all installation documentation for new fallback behavior
 
 📄 [Full Changelog](CHANGELOG.md)
 

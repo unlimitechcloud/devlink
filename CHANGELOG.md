@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] - 2026-03-09
+
+### Added
+- Bidirectional fallback resolution: npm-primary flows fall back to the local store, and store-primary flows fall back to npm — per-package, with clear warnings
+- `checkNpmExists()` helper: verifies per-package npm availability via `npm view` to enable granular fallback decisions
+- No-mode store fallback: universal packages not found in npm are now resolved from the store's global namespace (previously skipped)
+- npm-manager store fallback: packages not found in npm are resolved from the store using mode namespaces (previously not attempted)
+
+### Changed
+- npm manager (`--npm` + `manager: "npm"`) now checks each package individually via `npm view` instead of blindly injecting all as registry dependencies
+- No-mode flow now performs per-package `npm view` checks for non-synthetic universal packages, with store (global) fallback
+- Updated documentation (install.md, configuration.md, AGENTS.md, README) for bidirectional fallback behavior
+
 ## [2.2.3] - 2026-03-04
 
 ### Fixed

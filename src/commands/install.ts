@@ -264,6 +264,20 @@ export interface InstallResult {
 }
 
 /**
+ * Check if a package@version exists in the npm registry.
+ * Uses `npm view` which exits 0 if found, non-zero otherwise.
+ */
+async function checkNpmExists(packageName: string, version: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn("npm", ["view", `${packageName}@${version}`, "version", "--json"], {
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    child.on("error", () => resolve(false));
+    child.on("close", (code) => resolve(code === 0));
+  });
+}
+
+/**
  * Run npm install
  */
 async function runNpmInstall(runScripts: boolean = false): Promise<number> {
@@ -295,7 +309,7 @@ async function runNpmInstall(runScripts: boolean = false): Promise<number> {
 export async function installPackages(options: InstallOptions = {}): Promise<InstallResult> {
   const projectPath = process.cwd();
 
-  // ── No mode: resolve universal packages + npm install ──────────────────
+  // ── No mode: npm primary, store (global) fallback ───────────────────
   if (!options.mode) {
     const result: InstallResult = { installed: [], removed: [], skipped: [] };
 
@@ -319,9 +333,20 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
         // No config found — pure npm install
       }
 
-      // Stage synthetic universal packages to .devlink/ from npm
+      // Load registry for store fallback (only if we have universal packages)
+      let registry: Awaited<ReturnType<typeof readRegistry>> | null = null;
+      if (syntheticUniversal.length > 0 || universalPackages.length > 0) {
+        try {
+          registry = await readRegistry();
+        } catch {
+          // Store not available — no fallback possible
+        }
+      }
+
+      // Stage synthetic universal packages to .devlink/
+      // Primary: npm → Fallback: store (global namespace)
       if (syntheticUniversal.length > 0) {
-        console.log(`\n📦 Staging ${syntheticUniversal.length} synthetic universal package(s) from npm:`);
+        console.log(`\n📦 Staging ${syntheticUniversal.length} synthetic universal package(s):`);
         for (const pkg of syntheticUniversal) {
           console.log(`  - ${pkg.name}@${pkg.version} (synthetic)`);
           const staged = await stageFromNpm(projectPath, pkg.name, pkg.version);
@@ -333,21 +358,92 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
               namespace: "npm-synthetic",
             });
           } else {
-            console.log(`  ⚠️  Failed to stage ${pkg.name}@${pkg.version} from npm`);
-            result.skipped.push({ name: pkg.name, version: pkg.version, reason: "npm staging failed" });
+            // Fallback: try store (global namespace)
+            console.log(`  ⚠️  npm failed for ${pkg.name}@${pkg.version}, trying store fallback (global)...`);
+            const storeResolution = registry
+              ? resolvePackage(pkg.name, pkg.version, [DEFAULT_NAMESPACE], registry)
+              : null;
+            if (storeResolution?.found) {
+              const stagingDir = path.join(projectPath, STAGING_DIR);
+              const destPath = path.join(stagingDir, pkg.name);
+              await fs.mkdir(stagingDir, { recursive: true });
+              await fs.rm(destPath, { recursive: true, force: true });
+              await copyDir(storeResolution.path!, destPath);
+              result.installed.push({
+                name: pkg.name,
+                version: pkg.version,
+                qname: `${pkg.name}@${pkg.version}`,
+                namespace: storeResolution.namespace!,
+              });
+              console.log(`  ✓ ${pkg.name}@${pkg.version} [${storeResolution.namespace}] (store fallback → .devlink/)`);
+            } else {
+              console.log(`  ⚠️  ${pkg.name}@${pkg.version} not found in npm or store`);
+              result.skipped.push({ name: pkg.name, version: pkg.version, reason: "not found in npm or store (global)" });
+            }
           }
         }
       }
 
-      // Inject non-synthetic universal packages into package.json
+      // Resolve non-synthetic universal packages
+      // Primary: npm → Fallback: store (global namespace)
+      const npmRegistry: { name: string; version: string }[] = [];
+      const storeResolved: ResolvedPackage[] = [];
+
       if (universalPackages.length > 0) {
-        console.log(`\n📡 Injecting ${universalPackages.length} universal package(s):`);
+        console.log(`\n📡 Resolving ${universalPackages.length} universal package(s):`);
         for (const pkg of universalPackages) {
           console.log(`  - ${pkg.name}@${pkg.version}`);
+          // Primary: check npm
+          const existsNpm = await checkNpmExists(pkg.name, pkg.version);
+          if (existsNpm) {
+            npmRegistry.push(pkg);
+          } else {
+            // Fallback: try store (global namespace)
+            console.log(`  ⚠️  ${pkg.name}@${pkg.version} not found in npm, trying store fallback (global)...`);
+            const storeResolution = registry
+              ? resolvePackage(pkg.name, pkg.version, [DEFAULT_NAMESPACE], registry)
+              : null;
+            if (storeResolution?.found) {
+              storeResolved.push({
+                name: pkg.name,
+                version: pkg.version,
+                qname: `${pkg.name}@${pkg.version}`,
+                namespace: storeResolution.namespace,
+                path: storeResolution.path,
+                signature: storeResolution.signature,
+              });
+            } else {
+              console.log(`  ⚠️  ${pkg.name}@${pkg.version} not found in npm or store`);
+              result.skipped.push({ name: pkg.name, version: pkg.version, reason: "not found in npm or store (global)" });
+            }
+          }
         }
-        await injectStagedPackages(projectPath, [], [], universalPackages);
+      }
 
-        for (const pkg of universalPackages) {
+      // Stage store-fallback packages to .devlink/
+      if (storeResolved.length > 0) {
+        console.log(`\n📦 Staging ${storeResolved.length} universal package(s) from store (fallback):`);
+        for (const pkg of storeResolved) {
+          console.log(`  - ${pkg.name}@${pkg.version} [${pkg.namespace}]`);
+        }
+        const staging = await stageAndRelink(projectPath, storeResolved);
+        if (staging.relinked.length > 0) {
+          console.log(`  ↳ Re-linked ${staging.relinked.length} internal dependency(ies)`);
+        }
+        await injectStagedPackages(projectPath, staging.staged, []);
+        for (const pkg of storeResolved) {
+          result.installed.push(pkg);
+        }
+      }
+
+      // Inject npm-resolved packages into package.json
+      if (npmRegistry.length > 0) {
+        console.log(`\n📡 Injecting ${npmRegistry.length} universal package(s) from npm:`);
+        for (const pkg of npmRegistry) {
+          console.log(`  - ${pkg.name}@${pkg.version}`);
+        }
+        await injectStagedPackages(projectPath, [], [], npmRegistry);
+        for (const pkg of npmRegistry) {
           result.installed.push({
             name: pkg.name,
             version: pkg.version,
@@ -437,15 +533,42 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       }
       
       if (isNpmManager) {
-        registryPackages.push({ name: pkgName, version });
+        // npm manager: npm is primary, store is fallback
+        const existsNpm = await checkNpmExists(pkgName, version);
+        if (existsNpm) {
+          registryPackages.push({ name: pkgName, version });
+        } else {
+          // Fallback: try store
+          console.log(`  ⚠️  ${pkgName}@${version} not found in npm, trying store fallback (${namespaces.join(", ")})...`);
+          const storeResolution = resolvePackage(pkgName, version, namespaces, registry);
+          if (storeResolution.found) {
+            resolvedPackages.push({
+              name: pkgName,
+              version,
+              qname: `${pkgName}@${version}`,
+              namespace: storeResolution.namespace,
+              path: storeResolution.path,
+              signature: storeResolution.signature,
+            });
+          } else {
+            console.log(`  ⚠️  ${pkgName}@${version} not found in npm or store`);
+            result.skipped.push({ name: pkgName, version, reason: "not found in npm or store" });
+          }
+        }
         continue;
       }
       
       const resolution = resolvePackage(pkgName, version, namespaces, registry);
       if (!resolution.found) {
-        // Fallback to npm registry when not found in store
-        console.log(`  ⚠️  ${pkgName}@${version} not found in store (${namespaces.join(", ")}), falling back to npm`);
-        registryPackages.push({ name: pkgName, version });
+        // store manager: fallback to npm registry when not found in store
+        const existsNpm = await checkNpmExists(pkgName, version);
+        if (existsNpm) {
+          console.log(`  ⚠️  ${pkgName}@${version} not found in store (${namespaces.join(", ")}), falling back to npm`);
+          registryPackages.push({ name: pkgName, version });
+        } else {
+          console.log(`  ⚠️  ${pkgName}@${version} not found in store or npm`);
+          result.skipped.push({ name: pkgName, version, reason: "not found in store or npm" });
+        }
         continue;
       }
       
@@ -478,18 +601,40 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       }
     }
     
-    // Phase 1.5: Stage synthetic packages from npm (they must go to .devlink/, not package.json)
+    // Phase 1.5: Stage synthetic packages — npm primary, store fallback
     const syntheticFromNpm = registryPackages.filter(p => syntheticPackages.has(p.name));
     const nonSyntheticRegistry = registryPackages.filter(p => !syntheticPackages.has(p.name));
     
     if (syntheticFromNpm.length > 0) {
-      console.log(`\n📦 Staging ${syntheticFromNpm.length} synthetic package(s) from npm:`);
+      console.log(`\n📦 Staging ${syntheticFromNpm.length} synthetic package(s):`);
       for (const pkg of syntheticFromNpm) {
         console.log(`  - ${pkg.name}@${pkg.version} (synthetic)`);
-        const staged = await stageFromNpm(projectPath, pkg.name, pkg.version);
-        if (!staged) {
-          console.log(`  ⚠️  Failed to stage ${pkg.name}@${pkg.version} from npm`);
-          result.skipped.push({ name: pkg.name, version: pkg.version, reason: "npm staging failed" });
+        if (isNpmManager) {
+          // npm manager: npm primary → store fallback
+          const staged = await stageFromNpm(projectPath, pkg.name, pkg.version);
+          if (staged) continue;
+          // Fallback: try store
+          console.log(`  ⚠️  npm failed for ${pkg.name}@${pkg.version}, trying store fallback (${namespaces.join(", ")})...`);
+          const storeResolution = resolvePackage(pkg.name, pkg.version, namespaces, registry);
+          if (storeResolution.found) {
+            const stagingDir = path.join(projectPath, STAGING_DIR);
+            const destPath = path.join(stagingDir, pkg.name);
+            await fs.mkdir(stagingDir, { recursive: true });
+            await fs.rm(destPath, { recursive: true, force: true });
+            await copyDir(storeResolution.path!, destPath);
+            console.log(`  ✓ ${pkg.name}@${pkg.version} [${storeResolution.namespace}] (store fallback → .devlink/)`);
+          } else {
+            console.log(`  ⚠️  ${pkg.name}@${pkg.version} not found in npm or store`);
+            result.skipped.push({ name: pkg.name, version: pkg.version, reason: "not found in npm or store" });
+          }
+        } else {
+          // store manager: these already failed store resolution (fell to registryPackages)
+          // npm is the fallback here
+          const staged = await stageFromNpm(projectPath, pkg.name, pkg.version);
+          if (!staged) {
+            console.log(`  ⚠️  ${pkg.name}@${pkg.version} not found in store or npm`);
+            result.skipped.push({ name: pkg.name, version: pkg.version, reason: "not found in store or npm" });
+          }
         }
       }
     }

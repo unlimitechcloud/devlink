@@ -58,10 +58,10 @@ packages: {
 }
 ```
 
-Synthetic packages follow the same resolution logic as normal packages:
-- **Store manager**: Resolved from the store and copied to `.devlink/{name}/`
-- **npm manager / fallback**: Downloaded via `npm pack` and extracted to `.devlink/{name}/`
-- **No-mode**: Universal synthetic packages are staged from npm to `.devlink/`
+Synthetic packages follow the same bidirectional fallback as normal packages:
+- **Store manager**: Resolved from the store and copied to `.devlink/{name}/`. If not found → `npm pack` to `.devlink/`
+- **npm manager**: Downloaded via `npm pack` to `.devlink/{name}/`. If not found in npm → copied from store (mode namespaces) to `.devlink/`
+- **No-mode**: Universal synthetic packages use `npm pack` as primary → store (global namespace) copy as fallback
 
 In all cases, synthetic packages never appear in `package.json` — they are always staged to `.devlink/`.
 

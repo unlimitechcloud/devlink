@@ -13,17 +13,29 @@ Commands and configuration for installing packages from the DevLink store or reg
 
 DevLink supports dynamic modes defined in the config (e.g. `dev`, `remote`, `staging`). Each mode has a manager type:
 
-- **store**: Resolves packages from the local DevLink store. Falls back to npm with a warning if a package is not found in the store.
-- **npm**: Packages are resolved by npm from a configured registry (e.g. GitHub Packages)
+- **store**: Resolves packages from the local DevLink store. Falls back to npm (per-package `npm view` check) if a package is not found in any configured namespace.
+- **npm**: Packages are resolved by npm from a configured registry. Falls back to the local store (mode namespaces) if a package is not found in npm.
 
-When no mode is specified, DevLink skips package resolution entirely and only runs `npm install` (if `--npm` is set).
+When no mode is specified, DevLink uses npm as the primary source with store (global namespace) as fallback.
+
+## Bidirectional Fallback
+
+All flows use a consistent bidirectional fallback strategy. The primary source is always tried first; fallback only activates on failure. Fallback is per-package — in a single run, some packages may resolve from the primary and others from the fallback.
+
+| Scenario | Primary | Fallback |
+|----------|---------|----------|
+| No mode (universal) | npm | → store (global namespace) |
+| Mode + `manager: "npm"` | npm | → store (mode namespaces) |
+| Mode + `manager: "store"` | store (mode namespaces) | → npm |
+
+The fallback strategy is identical for synthetic and non-synthetic packages — only the destination differs (`.devlink/` for synthetic, `package.json`/`node_modules` for non-synthetic).
 
 ## Install Flows
 
-- **No mode** (`--npm` without `--mode`): Resolves universal packages (`version: "1.0.0"`) and injects them into `package.json` for npm to resolve. Synthetic universal packages are staged to `.devlink/` via `npm pack`. Per-mode packages are skipped. Useful for projects that only use universal versions.
+- **No mode** (`--npm` without `--mode`): Resolves universal packages (`version: "1.0.0"`) with npm as primary and store (global) as fallback. Non-synthetic packages are checked via `npm view` — if found, injected into `package.json`; if not, staged from store via `file:` protocol. Synthetic packages use `npm pack` primary → store global copy fallback. Per-mode packages are skipped.
 - **Direct copy** (default with mode): Copies packages directly to `node_modules/`. Synthetic packages are copied to `.devlink/` instead. Falls back to `npm install --no-save` for non-synthetic packages not found in the store; synthetic fallbacks use `npm pack` to `.devlink/`.
-- **Staging flow** (`--npm` + store manager): Stages packages locally, rewrites internal dependencies to `file:` paths, then runs `npm install`. Synthetic packages not found in the store are staged from npm via `npm pack`. Non-synthetic packages not found in the store are injected as registry packages.
-- **Registry flow** (`--npm` + npm manager): Injects non-synthetic packages as exact versions into temporary `package.json`, npm resolves from registry. Synthetic packages are staged to `.devlink/` via `npm pack`.
+- **Staging flow** (`--npm` + store manager): Store is primary — stages packages locally, rewrites internal dependencies to `file:` paths, then runs `npm install`. Packages not found in the store fall back to npm (verified via `npm view`) and are injected as registry dependencies (non-synthetic) or staged via `npm pack` (synthetic).
+- **Registry flow** (`--npm` + npm manager): npm is primary — verifies each package via `npm view`. Non-synthetic packages found in npm are injected as exact versions; not found → fallback to store (mode namespaces) and staged via `file:` protocol. Synthetic packages use `npm pack` primary → store copy fallback.
 
 Use `--npm` when your DevLink packages have internal dependencies on each other, or when using a remote registry.
 

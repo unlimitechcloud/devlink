@@ -149,9 +149,13 @@ The mode is determined by (in priority order):
 
 When no mode is specified (no `--mode`, no `--dev`/`--prod`, no `detectMode`), the install command:
 - Loads the config file if available
-- Resolves packages with universal versions (`version: "1.0.0"`) — injected into `package.json` as registry dependencies
+- Resolves packages with universal versions (`version: "1.0.0"`) using bidirectional fallback (npm primary → store global fallback)
 - Skips packages with per-mode versions (no active mode to match)
 - Runs `npm install` if `--npm` is set
+
+For each universal package, DevLink checks npm first (`npm view`). If the package exists in npm, it is injected into `package.json` as a registry dependency. If not found in npm, DevLink falls back to the store's `global` namespace — staging the package via `file:` protocol so npm can resolve it locally.
+
+Synthetic universal packages follow the same fallback: `stageFromNpm` (primary) → store global copy to `.devlink/` (fallback).
 
 This ensures universal packages are always installed regardless of mode. Projects that only use universal versions can omit the mode entirely.
 
@@ -168,20 +172,49 @@ packages: {
 
 When running `--mode remote --npm`, `@scope/dev-tools` will be removed from the temporary `package.json` before `npm install` runs.
 
-## npm Fallback (Store Manager)
+## Bidirectional Fallback Resolution
 
-When using `manager: "store"`, if a package is not found in any of the configured namespaces, DevLink falls back to npm instead of silently skipping:
+DevLink implements a bidirectional fallback strategy that ensures packages can always be resolved, regardless of whether the primary source is npm or the local store. The fallback is consistent for both synthetic and non-synthetic packages — only the destination differs.
 
-- **`--npm` flow (staging):** The package is added to the registry injection list and resolved by npm during `npm install`. A `⚠️` warning is printed.
-- **Direct copy flow (without `--npm`):** DevLink runs `npm install <package>@<version> --no-save` as a fallback. A `⚠️` warning is printed.
+### Fallback Rules
 
-This ensures packages that haven't been published to the local store yet can still be resolved from the npm registry, with explicit visibility into which packages took the fallback path.
+| Scenario | Primary | Fallback |
+|----------|---------|----------|
+| No mode (universal packages) | npm | → store (global namespace) |
+| Mode + `manager: "npm"` | npm | → store (mode namespaces) |
+| Mode + `manager: "store"` | store (mode namespaces) | → npm |
 
-Example output:
+### How It Works
+
+For each package, DevLink tries the primary source first. Only if the primary fails does it attempt the fallback:
+
+- **npm primary**: DevLink runs `npm view <package>@<version>` to verify the package exists in the npm registry. If it does, the package is injected as a registry dependency (non-synthetic) or staged via `npm pack` (synthetic). If `npm view` fails, DevLink searches the store (global namespace for no-mode, or mode namespaces for npm manager).
+
+- **store primary**: DevLink searches the configured namespaces in order. If the package is found, it is copied/staged from the store. If not found in any namespace, DevLink runs `npm view` to check npm availability and falls back to npm injection (non-synthetic) or `npm pack` staging (synthetic).
+
+### Per-Package Granularity
+
+Fallback is evaluated per-package, not globally. In a single install run, some packages may resolve from npm while others fall back to the store (or vice versa). Each package's resolution path is logged:
+
 ```
-  ⚠️  @scope/core@1.0.0 not found in store (feature-v2, global), falling back to npm
-  ✓ @scope/core@1.0.0 (npm fallback)
+📡 Resolving 3 universal package(s):
+  - @scope/core@1.0.0
+  - @scope/utils@2.0.0
+  ⚠️  @scope/utils@2.0.0 not found in npm, trying store fallback (global)...
+  ✓ @scope/utils@2.0.0 [global] (store fallback → staged)
+  - @scope/tools@1.0.0
 ```
+
+### Synthetic vs Non-Synthetic
+
+The fallback strategy is identical for both — only the destination changes:
+
+| Type | Primary success | Fallback success |
+|------|----------------|-----------------|
+| Non-synthetic (npm primary) | Injected into `package.json` | Staged from store via `file:` protocol |
+| Non-synthetic (store primary) | Staged from store via `file:` protocol | Injected into `package.json` |
+| Synthetic (npm primary) | `npm pack` → `.devlink/` | Store copy → `.devlink/` |
+| Synthetic (store primary) | Store copy → `.devlink/` | `npm pack` → `.devlink/` |
 
 ## Synthetic Packages
 
@@ -197,12 +230,12 @@ packages: {
 
 ### Synthetic Resolution by Flow
 
-| Flow | Store found | Store not found |
-|------|-------------|-----------------|
+| Flow | Primary | Fallback |
+|------|---------|----------|
 | `--npm` + store manager | Staged from store to `.devlink/` | Downloaded via `npm pack` to `.devlink/` |
-| `--npm` + npm manager | N/A (no store lookup) | Downloaded via `npm pack` to `.devlink/` |
+| `--npm` + npm manager | Downloaded via `npm pack` to `.devlink/` | Staged from store (mode namespaces) to `.devlink/` |
 | Direct copy (no `--npm`) | Copied from store to `.devlink/` | Downloaded via `npm pack` to `.devlink/` |
-| No-mode + universal | N/A | Downloaded via `npm pack` to `.devlink/` |
+| No-mode + universal | Downloaded via `npm pack` to `.devlink/` | Copied from store (global) to `.devlink/` |
 
 In all cases, synthetic packages end up in `.devlink/{packageName}/` and are never injected into `package.json`.
 
@@ -216,19 +249,40 @@ Example output:
 
 For each package in the config:
 
-1. Get version for current mode
+1. Get version for current mode (or universal version if no mode)
 2. If no version exists for this mode → mark for removal (--npm flow)
-3. If `manager: "store"` → search namespaces in order, find first match
-4. If `manager: "npm"` → inject as exact version for npm to resolve from registry
+3. Determine primary source based on scenario:
+   - No mode → npm primary
+   - `manager: "npm"` → npm primary
+   - `manager: "store"` → store primary
+4. Try primary source:
+   - npm primary: `npm view <pkg>@<version>` to verify availability
+   - store primary: search namespaces in order, find first match
+5. If primary fails → try fallback:
+   - npm primary fallback: search store (global namespace for no-mode, mode namespaces for npm manager)
+   - store primary fallback: `npm view <pkg>@<version>` to verify npm availability
+6. If both fail → skip with warning
 
-Example (store mode):
+Example (store mode with npm fallback):
 ```
 Config: @scope/core@1.0.0
 Namespaces: ["feature-v2", "global"]
 
 1. Search feature-v2/@scope/core/1.0.0 → Not found
-2. Search global/@scope/core/1.0.0 → Found!
-3. Copy to node_modules/@scope/core
+2. Search global/@scope/core/1.0.0 → Not found
+3. npm view @scope/core@1.0.0 → Found!
+4. ⚠️  Inject as registry dependency (npm fallback)
+```
+
+Example (npm mode with store fallback):
+```
+Config: @scope/core@1.0.0
+Namespaces: ["feature-v2", "global"]
+
+1. npm view @scope/core@1.0.0 → Not found
+2. ⚠️  Search feature-v2/@scope/core/1.0.0 → Not found
+3. ⚠️  Search global/@scope/core/1.0.0 → Found!
+4. Stage from store (store fallback)
 ```
 
 ## Lock File
@@ -287,16 +341,17 @@ remote: () => ({
 
 ### Package Not Found
 
-When using `manager: "store"`, if a package is not found in any configured namespace, DevLink falls back to npm with a warning:
+When a package is not found in the primary source, DevLink tries the fallback. If both primary and fallback fail, the package is skipped:
 
+```
+  ⚠️  @scope/core@1.0.0 not found in npm, trying store fallback (global)...
+  ⚠️  @scope/core@1.0.0 not found in npm or store
+```
+
+Or for store-primary flows:
 ```
   ⚠️  @scope/core@1.0.0 not found in store (feature-v2, global), falling back to npm
-```
-
-If the npm fallback also fails, the package is skipped with a reason:
-
-```
-Skipped: @scope/core@1.0.0 — npm fallback failed (exit code 1)
+  ⚠️  @scope/core@1.0.0 not found in store or npm
 ```
 
 ### Config Not Found
@@ -322,18 +377,21 @@ The mode specified via `--mode` doesn't have a corresponding factory function in
 The `--npm` flag enables DevLink's npm integration. Behavior depends on the manager type:
 
 **Store manager (`manager: "store"`):**
-1. Resolves packages from the DevLink store
-2. Stages them to `.devlink/` with internal deps rewritten as `file:` paths
-3. Injects staged packages as `file:` dependencies in a temporary `package.json`
-4. Removes packages not in the current mode
-5. Runs `npm install`
-6. Restores original `package.json`
+1. Resolves packages from the DevLink store (primary)
+2. Packages not found in store → `npm view` check → injected as registry dependencies (fallback)
+3. Stages store-resolved packages to `.devlink/` with internal deps rewritten as `file:` paths
+4. Injects staged packages as `file:` dependencies in a temporary `package.json`
+5. Removes packages not in the current mode
+6. Runs `npm install`
+7. Restores original `package.json`
 
 **npm manager (`manager: "npm"`):**
-1. Injects packages as exact versions in a temporary `package.json`
-2. Removes packages not in the current mode
-3. Runs `npm install` (npm resolves from configured registry)
-4. Restores original `package.json`
+1. Checks each package via `npm view` (primary)
+2. Packages found in npm → injected as exact versions in a temporary `package.json`
+3. Packages not found in npm → searched in store (mode namespaces) → staged via `file:` protocol (fallback)
+4. Removes packages not in the current mode
+5. Runs `npm install` (npm resolves registry + staged packages)
+6. Restores original `package.json`
 
 ### Recommended package.json Scripts
 
