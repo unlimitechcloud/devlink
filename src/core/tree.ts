@@ -105,6 +105,28 @@ export async function scanTree(
         }
       }
     }
+
+    // Module has no workspaces but may still have sub-packages under packages/
+    // that are positional children (workspace definition §3: a package whose
+    // nearest ancestor package.json is another workspace is a workspace child).
+    // These are all isolated since they are not declared in any workspaces field.
+    if (!mod.hasWorkspaces && maxDepth > 1) {
+      const allSubPackages = await listSubPackages(wsPath);
+
+      if (allSubPackages.length > 0) {
+        for (const childPath of allSubPackages) {
+          const child = await scanModule(childPath, resolvedRoot, []);
+          child.isIsolated = true;
+          mod.children.push(child);
+          isolatedPackages.push(childPath);
+        }
+
+        // Mark parent as having children (even though workspaces field is empty)
+        if (mod.children.length > 0) {
+          mod.hasWorkspaces = true;
+        }
+      }
+    }
   }
 
   return { root: resolvedRoot, modules, installLevels, isolatedPackages };
