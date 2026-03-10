@@ -259,6 +259,26 @@ Example output:
   - @myorg/sst@0.4.0 (synthetic)
 ```
 
+## Linked Packages
+
+Packages with a `link` attribute skip all resolution (store, npm, staging) and are resolved via `npm link` after `npm install` completes. This is useful for local package development where you want a live symlink instead of a copy.
+
+```javascript
+packages: {
+  "@myorg/sdk": { version: "1.0.0", link: "../sdk" },
+}
+```
+
+After install, DevLink runs `npm link <resolved-path>` for each linked package. The result is reported in the install summary:
+
+```
+🔗 Linking 1 local package(s):
+  - @myorg/sdk → /home/user/project/sdk
+  ✓ Linked 1 package(s)
+```
+
+Link works in all three install flows (no-mode, mode+npm, and direct copy). Relative paths are resolved against the project root.
+
 ## Resolution Process
 
 For each package in the config:

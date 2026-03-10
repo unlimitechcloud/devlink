@@ -49,11 +49,16 @@ Package versions support two formats:
 
 Packages without a version for the current mode are removed from `package.json` during `--npm` installs. This enables mode-specific package sets.
 
+## Linked Packages
+
+Packages with a `link` attribute bypass all resolution and are resolved via `npm link` after install. They are not staged, not injected into `package.json`, and not copied from the store. This works in all install flows.
+
 ## Configuration
 
 Projects use `devlink.config.mjs` to define:
 - Which packages to manage and their versions (per-mode object or universal string)
 - Synthetic flag for packages that should be staged to `.devlink/` instead of `package.json`
+- Link attribute for packages resolved via `npm link` instead of store/npm
 - Dev flag for packages that should be injected into `devDependencies` instead of `dependencies`
 - Mode factories (top-level properties like `dev`, `remote`)
 - Mode detection logic (`detectMode`)
