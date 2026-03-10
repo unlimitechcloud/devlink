@@ -400,11 +400,9 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.5.1] - 2026-03-10
+### Latest: [2.5.2] - 2026-03-10
 
-- New `link` attribute for packages: skip store/npm resolution and resolve via `npm link`
-- Link support across all install flows (no-mode, mode+npm, direct copy)
-- Post-install summary for linked packages
+- `tree` command now detects sub-packages under `packages/` even without `workspaces` field
 
 📄 [Full Changelog](CHANGELOG.md)
 
