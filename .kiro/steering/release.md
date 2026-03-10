@@ -406,3 +406,46 @@ The AI assistant executes all commands directly. User interaction is only requir
 - **npm tag already exists:** Offer to delete and recreate
 - **Publish workflow fails:** Enter diagnosis loop (Step 6) — inspect logs, fix, amend, re-tag, force push, re-monitor
 - **Tag not pushed after force push:** Run `git push origin --force v{VERSION}` separately (force push of branch does not always update tags)
+
+## ⚠️ CRITICAL: No Amending Published Releases
+
+**Once a version is published to GitHub Packages or npm, it CANNOT be modified.**
+
+### Why Amending Doesn't Work
+
+1. **Package registries are immutable:** GitHub Packages and npm reject re-publishing the same version (`E409 Conflict`)
+2. **Force-pushing tags after publish is useless:** The package artifact is already stored in the registry with the original content
+3. **Amending commits breaks history:** Other consumers may have already pulled the original tag
+
+### What To Do Instead
+
+If you discover an issue after publishing (e.g., missing documentation, typo in changelog):
+
+1. **Create a new PATCH release** with the fix:
+   ```
+   v2.5.0 (published with issue)
+   v2.5.1 (fix release)
+   ```
+
+2. **Document the fix** in the changelog:
+   ```markdown
+   ## [2.5.1] - 2026-03-10
+   
+   ### Changed
+   - Updated documentation for feature X (missing in v2.5.0)
+   ```
+
+3. **Never attempt to:**
+   - Force-push a tag that has already triggered a successful publish
+   - Amend a release commit after the package is published
+   - Delete and recreate a published version
+
+### Pre-Publish Checklist
+
+Before creating the GitHub Release (Step 5), verify:
+- [ ] Documentation is updated (README, docs/, AGENTS.md if applicable)
+- [ ] Changelog entry is complete and accurate
+- [ ] Version number is correct in all files
+- [ ] All tests pass locally
+
+**Once `gh release create` succeeds and the publish workflow completes, the release is final.**
