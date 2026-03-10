@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] - 2026-03-10
+
+### Added
+- `link` attribute for packages in `devlink.config.mjs`: packages with `link` skip store/npm resolution entirely and are resolved via `npm link` after install
+- `runNpmLink()` helper: runs `npm link <path>` for a local package, resolving relative paths against the project root
+- Link support in all three install flows: no-mode, mode+npm (staging), and direct copy
+- `linked` field in `InstallResult` to track successfully linked packages
+- Post-install summary showing linked packages count and paths
+
 ## [2.4.1] - 2026-03-10
 
 ### Fixed
