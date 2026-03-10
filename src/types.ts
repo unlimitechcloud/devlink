@@ -418,6 +418,8 @@ export interface PackageSpecNew {
   synthetic?: boolean;
   /** Si true, se inyecta en devDependencies en vez de dependencies */
   dev?: boolean;
+  /** Ruta local para npm link (absoluta o relativa al proyecto). Cuando está presente, el paquete se resuelve vía npm link en vez de store/npm. */
+  link?: string;
 }
 
 
@@ -431,6 +433,8 @@ export interface NormalizedPackageSpec {
   synthetic: boolean;
   /** Si true, se inyecta en devDependencies en vez de dependencies */
   dev: boolean;
+  /** Ruta local para npm link */
+  link?: string;
 }
 
 /**

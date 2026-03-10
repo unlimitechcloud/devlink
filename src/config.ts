@@ -130,6 +130,7 @@ export function normalizeConfig(raw: DevLinkConfig): NormalizedConfig {
         versions,
         synthetic: spec.synthetic ?? false,
         dev: spec.dev ?? false,
+        ...(spec.link ? { link: spec.link } : {}),
       };
     } else {
       throw new Error(

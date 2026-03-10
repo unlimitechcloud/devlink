@@ -264,6 +264,7 @@ export interface InstallResult {
   installed: ResolvedPackage[];
   removed: string[];
   skipped: { name: string; version: string; reason: string }[];
+  linked: { name: string; linkPath: string }[];
   npmExitCode?: number;
 }
 
@@ -306,6 +307,29 @@ async function runNpmInstall(runScripts: boolean = false): Promise<number> {
 }
 
 /**
+ * Run npm link for a local package path.
+ * Resolves the link path relative to the project if not absolute.
+ *
+ * @param projectPath - The project root directory
+ * @param packageName - The package name (for logging)
+ * @param linkPath - Absolute or relative path to the local package
+ * @returns 0 on success, non-zero on failure
+ */
+async function runNpmLink(projectPath: string, packageName: string, linkPath: string): Promise<number> {
+  const resolvedPath = path.isAbsolute(linkPath) ? linkPath : path.resolve(projectPath, linkPath);
+  return new Promise((resolve) => {
+    const child = spawn("npm", ["link", resolvedPath], {
+      cwd: projectPath,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
+    child.on("error", () => resolve(1));
+    child.on("close", (code) => resolve(code ?? 1));
+  });
+}
+
+/**
  * Install packages from store based on config.
  * Operates on the current directory (root of monorepo).
  * Injects file: protocols into the local package.json only.
@@ -320,18 +344,24 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
 
   // ── No mode: npm primary, store (global) fallback ───────────────────
   if (!options.mode) {
-    const result: InstallResult = { installed: [], removed: [], skipped: [] };
+    const result: InstallResult = { installed: [], removed: [], skipped: [], linked: [] };
 
     if (options.runNpm) {
       // Try to load config to find universal packages
       let universalPackages: { name: string; version: string }[] = [];
       let syntheticUniversal: { name: string; version: string }[] = [];
       let devPackages = new Set<string>();
+      let linkPackages: { name: string; linkPath: string }[] = [];
       try {
         const config = await loadConfig(options.config, options.configName, options.configKey);
         const normalized = normalizeConfig(config);
         for (const [pkgName, spec] of Object.entries(config.packages)) {
           if (isNewFormat(spec) && typeof spec.version === "string") {
+            // Packages with link skip staging/resolution entirely
+            if (spec.link) {
+              linkPackages.push({ name: pkgName, linkPath: spec.link });
+              continue;
+            }
             if (normalized.packages[pkgName]?.synthetic) {
               syntheticUniversal.push({ name: pkgName, version: spec.version });
             } else {
@@ -468,6 +498,24 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       }
 
       result.npmExitCode = await runNpmInstall(options.runScripts);
+
+      // ── npm link: re-link packages with link attribute after npm install ──
+      if (result.npmExitCode === 0 && linkPackages.length > 0) {
+        console.log(`\n🔗 Linking ${linkPackages.length} local package(s):`);
+        for (const pkg of linkPackages) {
+          const resolvedPath = path.isAbsolute(pkg.linkPath) ? pkg.linkPath : path.resolve(projectPath, pkg.linkPath);
+          console.log(`  - ${pkg.name} → ${resolvedPath}`);
+          const code = await runNpmLink(projectPath, pkg.name, pkg.linkPath);
+          if (code === 0) {
+            result.linked.push(pkg);
+          } else {
+            console.log(`  ⚠️  npm link failed for ${pkg.name} (exit code ${code})`);
+          }
+        }
+        if (result.linked.length > 0) {
+          console.log(`  ✓ Linked ${result.linked.length} package(s)`);
+        }
+      }
     }
     return result;
   }
@@ -510,7 +558,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   // If using npm manager and --npm flag is NOT set, skip entirely
   if (modeConfig.manager === "npm" && !options.runNpm) {
     console.log("Using npm manager, skipping store installation");
-    return { installed: [], removed: [], skipped: [] };
+    return { installed: [], removed: [], skipped: [], linked: [] };
   }
   
   // Determine namespaces to search
@@ -520,7 +568,16 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     installed: [],
     removed: [],
     skipped: [],
+    linked: [],
   };
+  
+  // Collect packages with link attribute (skip resolution, npm link after install)
+  const linkPackagesForMode: { name: string; linkPath: string }[] = [];
+  for (const [pkgName, spec] of Object.entries(config.packages)) {
+    if (isNewFormat(spec) && spec.link) {
+      linkPackagesForMode.push({ name: pkgName, linkPath: spec.link });
+    }
+  }
   
   const registry = await readRegistry();
   const lockfile = await readLockfile(projectPath);
@@ -537,11 +594,17 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   if (options.runNpm) {
     const isNpmManager = modeConfig.manager === "npm";
     
+    // Build set of link package names for fast lookup
+    const linkPackageNames = new Set(linkPackagesForMode.map(p => p.name));
+    
     // Phase 1: Resolve all packages
     const resolvedPackages: ResolvedPackage[] = [];
     const registryPackages: { name: string; version: string }[] = [];
     const removePackageNames: string[] = [];
     for (const [pkgName, spec] of Object.entries(config.packages)) {
+      // Skip packages with link — they'll be npm-linked after install
+      if (linkPackageNames.has(pkgName)) continue;
+      
       const version = resolveVersion(spec, mode);
       if (!version) {
         removePackageNames.push(pkgName);
@@ -695,6 +758,24 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       console.log(`  ↳ Linked ${totalBinLinks} bin entr${totalBinLinks === 1 ? "y" : "ies"}`);
     }
     
+    // Phase 4.6: npm link for packages with link attribute
+    if (linkPackagesForMode.length > 0) {
+      console.log(`\n🔗 Linking ${linkPackagesForMode.length} local package(s):`);
+      for (const pkg of linkPackagesForMode) {
+        const resolvedLinkPath = path.isAbsolute(pkg.linkPath) ? pkg.linkPath : path.resolve(projectPath, pkg.linkPath);
+        console.log(`  - ${pkg.name} → ${resolvedLinkPath}`);
+        const code = await runNpmLink(projectPath, pkg.name, pkg.linkPath);
+        if (code === 0) {
+          result.linked.push(pkg);
+        } else {
+          console.log(`  ⚠️  npm link failed for ${pkg.name} (exit code ${code})`);
+        }
+      }
+      if (result.linked.length > 0) {
+        console.log(`  ✓ Linked ${result.linked.length} package(s)`);
+      }
+    }
+    
     // Phase 5: Tracking
     for (const pkg of resolvedPackages) {
       lockfile.packages[pkg.name] = {
@@ -749,6 +830,9 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   }
 
   for (const [pkgName, spec] of Object.entries(config.packages)) {
+    // Skip packages with link — they'll be npm-linked after the loop
+    if (isNewFormat(spec) && spec.link) continue;
+    
     const version = resolveVersion(spec, mode);
     if (!version) {
       result.skipped.push({ name: pkgName, version: "N/A", reason: `No ${mode} version specified` });
@@ -870,6 +954,24 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     }
   }
   
+  // ── npm link for packages with link attribute (direct copy flow) ─────
+  if (linkPackagesForMode.length > 0) {
+    console.log(`\n🔗 Linking ${linkPackagesForMode.length} local package(s):`);
+    for (const pkg of linkPackagesForMode) {
+      const resolvedLinkPath = path.isAbsolute(pkg.linkPath) ? pkg.linkPath : path.resolve(projectPath, pkg.linkPath);
+      console.log(`  - ${pkg.name} → ${resolvedLinkPath}`);
+      const code = await runNpmLink(projectPath, pkg.name, pkg.linkPath);
+      if (code === 0) {
+        result.linked.push(pkg);
+      } else {
+        console.log(`  ⚠️  npm link failed for ${pkg.name} (exit code ${code})`);
+      }
+    }
+    if (result.linked.length > 0) {
+      console.log(`  ✓ Linked ${result.linked.length} package(s)`);
+    }
+  }
+  
   if (modeConfig.afterAll) {
     await modeConfig.afterAll();
   }
@@ -939,6 +1041,13 @@ export async function handleInstall(args: {
     
     if (result.installed.length === 0 && result.skipped.length === 0 && result.removed.length === 0) {
       console.log("No packages to install");
+    }
+
+    if (result.linked && result.linked.length > 0) {
+      console.log(`\n✓ Linked ${result.linked.length} local package(s):`);
+      for (const pkg of result.linked) {
+        console.log(`  - ${pkg.name} → ${pkg.linkPath}`);
+      }
     }
     
     if (args.npm) {
