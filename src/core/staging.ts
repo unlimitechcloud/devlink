@@ -72,13 +72,13 @@ export async function stageAndRelink(
   const stagingDir = path.join(projectPath, STAGING_DIR);
   const result: StagingResult = { staged: [], relinked: [] };
 
-  // 1. Clean existing staging
-  await fs.rm(stagingDir, { recursive: true, force: true });
+  // 1. Ensure staging directory exists
   await fs.mkdir(stagingDir, { recursive: true });
 
-  // 2. Copy packages from store to staging
+  // 2. Copy packages from store to staging (clean only the target subdirectory)
   for (const pkg of resolvedPackages) {
     const destPath = path.join(stagingDir, pkg.name);
+    await fs.rm(destPath, { recursive: true, force: true });
     await copyDir(pkg.path!, destPath);
     result.staged.push({
       name: pkg.name,
