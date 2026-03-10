@@ -200,6 +200,7 @@ export default {
     "@myorg/dev-tools": { version: { dev: "1.0.0" } },                // dev only — removed in remote mode
     "@myorg/sst": { version: { dev: "0.4.0" }, synthetic: true },     // synthetic — staged to .devlink/
     "@myorg/test-utils": { version: "1.0.0", dev: true },             // dev dependency — → devDependencies
+    "@myorg/local-sdk": { version: "1.0.0", link: "../sdk" },         // link — resolved via npm link
   },
   
   // Dev mode — uses local DevLink store
@@ -399,9 +400,11 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.4.1] - 2026-03-10
+### Latest: [2.5.0] - 2026-03-10
 
-- Staging directory (`.devlink/`) is now fully cleaned at the start of every install run, preventing stale packages between executions
+- New `link` attribute for packages: skip store/npm resolution and resolve via `npm link`
+- Link support across all install flows (no-mode, mode+npm, direct copy)
+- Post-install summary for linked packages
 
 📄 [Full Changelog](CHANGELOG.md)
 

@@ -58,6 +58,19 @@ packages: {
 }
 ```
 
+### link
+
+Specifies a local path for `npm link` resolution. Packages with `link` skip store/npm resolution entirely — they are not staged, not injected into `package.json`, and not copied from the store. Instead, after `npm install` completes, DevLink runs `npm link <path>` for each linked package.
+
+```javascript
+packages: {
+  "@myorg/sdk": { version: "1.0.0", link: "../sdk" },           // relative path
+  "@myorg/tools": { version: "1.0.0", link: "/home/user/tools" }, // absolute path
+}
+```
+
+Relative paths are resolved against the project root. The `link` attribute works in all three install flows (no-mode, mode+npm, and direct copy). The `version` field is still required for config validation but is not used for resolution.
+
 ### dev
 
 Marks a package as a dev dependency. When DevLink injects the package into `package.json`, it goes into `devDependencies` instead of `dependencies`. This is a global flag — it applies regardless of the active mode or manager type.
@@ -185,6 +198,9 @@ export default {
 
     // Dev dependency — injected into devDependencies
     "@myorg/test-utils": { version: "1.0.0", dev: true },
+
+    // Link — resolved via npm link, skips store/npm resolution
+    "@myorg/local-sdk": { version: "1.0.0", link: "../sdk" },
   },
 
   // Development mode: use local store
