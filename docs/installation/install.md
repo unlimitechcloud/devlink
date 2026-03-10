@@ -51,6 +51,7 @@ export default {
     "@scope/core": { version: { dev: "1.0.0", remote: "1.0.0" } },
     "@scope/utils": { version: "2.0.0" },                           // universal
     "@scope/dev-tools": { version: { dev: "1.0.0" } },              // only in dev mode
+    "@scope/test-utils": { version: "1.0.0", dev: true },           // → devDependencies
   },
 
   dev: () => ({
@@ -215,6 +216,19 @@ The fallback strategy is identical for both — only the destination changes:
 | Non-synthetic (store primary) | Staged from store via `file:` protocol | Injected into `package.json` |
 | Synthetic (npm primary) | `npm pack` → `.devlink/` | Store copy → `.devlink/` |
 | Synthetic (store primary) | Store copy → `.devlink/` | `npm pack` → `.devlink/` |
+
+## Dev Dependencies
+
+Packages marked with `dev: true` are injected into `devDependencies` instead of `dependencies` in `package.json`. This is a global flag — it applies regardless of the install mode or manager type.
+
+```javascript
+packages: {
+  "@scope/core": { version: "1.0.0" },                    // → dependencies
+  "@scope/test-utils": { version: "1.0.0", dev: true },   // → devDependencies
+}
+```
+
+When DevLink injects packages into `package.json` (via `file:` protocol or registry version), it routes them to the correct section based on this flag. The `dev` flag has no effect on synthetic packages (they are never injected into `package.json`).
 
 ## Synthetic Packages
 

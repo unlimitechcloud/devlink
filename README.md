@@ -199,6 +199,7 @@ export default {
     "@myorg/utils": { version: { dev: "2.0.0", remote: "1.5.0" } },  // per-mode
     "@myorg/dev-tools": { version: { dev: "1.0.0" } },                // dev only — removed in remote mode
     "@myorg/sst": { version: { dev: "0.4.0" }, synthetic: true },     // synthetic — staged to .devlink/
+    "@myorg/test-utils": { version: "1.0.0", dev: true },             // dev dependency — → devDependencies
   },
   
   // Dev mode — uses local DevLink store
@@ -398,10 +399,10 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.3.2] - 2026-03-09
+### Latest: [2.4.0] - 2026-03-10
 
-- Unit tests for exit code propagation in multilevel installer
-- Install command exits with code 1 on resolution failures or npm install errors (v2.3.1)
+- `dev: true` package flag: inject packages into `devDependencies` instead of `dependencies`
+- Global flag, independent of mode or manager type
 
 📄 [Full Changelog](CHANGELOG.md)
 

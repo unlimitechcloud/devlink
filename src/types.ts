@@ -416,6 +416,8 @@ export interface PackageSpecNew {
   version: Record<string, string> | string;
   /** Si es un paquete sintético (solo store, no node_modules) */
   synthetic?: boolean;
+  /** Si true, se inyecta en devDependencies en vez de dependencies */
+  dev?: boolean;
 }
 
 
@@ -427,6 +429,8 @@ export interface NormalizedPackageSpec {
   versions: Record<string, string>;
   /** Si es un paquete sintético */
   synthetic: boolean;
+  /** Si true, se inyecta en devDependencies en vez de dependencies */
+  dev: boolean;
 }
 
 /**

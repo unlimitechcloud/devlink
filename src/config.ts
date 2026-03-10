@@ -129,6 +129,7 @@ export function normalizeConfig(raw: DevLinkConfig): NormalizedConfig {
       packages[pkgName] = {
         versions,
         synthetic: spec.synthetic ?? false,
+        dev: spec.dev ?? false,
       };
     } else {
       throw new Error(

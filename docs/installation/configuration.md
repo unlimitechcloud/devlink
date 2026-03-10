@@ -58,6 +58,20 @@ packages: {
 }
 ```
 
+### dev
+
+Marks a package as a dev dependency. When DevLink injects the package into `package.json`, it goes into `devDependencies` instead of `dependencies`. This is a global flag — it applies regardless of the active mode or manager type.
+
+```javascript
+packages: {
+  "@myorg/core": { version: "1.0.0" },                          // → dependencies
+  "@myorg/test-utils": { version: "1.0.0", dev: true },         // → devDependencies
+  "@myorg/lint-config": { version: { dev: "1.0.0" }, dev: true }, // → devDependencies (dev mode only)
+}
+```
+
+The `dev` flag has no effect on synthetic packages (they are never injected into `package.json`).
+
 Synthetic packages follow the same bidirectional fallback as normal packages:
 - **Store manager**: Resolved from the store and copied to `.devlink/{name}/`. If not found → `npm pack` to `.devlink/`
 - **npm manager**: Downloaded via `npm pack` to `.devlink/{name}/`. If not found in npm → copied from store (mode namespaces) to `.devlink/`
@@ -168,6 +182,9 @@ export default {
 
     // Synthetic — staged to .devlink/, not injected in package.json
     "@myorg/sst": { version: { dev: "0.4.0" }, synthetic: true },
+
+    // Dev dependency — injected into devDependencies
+    "@myorg/test-utils": { version: "1.0.0", dev: true },
   },
 
   // Development mode: use local store

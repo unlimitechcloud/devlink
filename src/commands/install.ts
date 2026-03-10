@@ -218,21 +218,25 @@ async function injectStagedPackages(
   stagedPackages: StagedPackage[],
   removePackageNames: string[] = [],
   registryPackages: { name: string; version: string }[] = [],
-  syntheticPackages?: Set<string>
+  syntheticPackages?: Set<string>,
+  devPackages?: Set<string>
 ): Promise<void> {
   const packageJsonPath = path.join(projectPath, "package.json");
   const originalContent = await fs.readFile(packageJsonPath, "utf-8");
   const manifest = JSON.parse(originalContent);
   manifest.dependencies = manifest.dependencies || {};
+  manifest.devDependencies = manifest.devDependencies || {};
 
   for (const pkg of stagedPackages) {
     if (syntheticPackages?.has(pkg.name)) continue;
     const relativePath = path.relative(projectPath, pkg.stagingPath);
-    manifest.dependencies[pkg.name] = `file:${relativePath}`;
+    const target = devPackages?.has(pkg.name) ? "devDependencies" : "dependencies";
+    manifest[target][pkg.name] = `file:${relativePath}`;
   }
 
   for (const pkg of registryPackages) {
-    manifest.dependencies[pkg.name] = pkg.version;
+    const target = devPackages?.has(pkg.name) ? "devDependencies" : "dependencies";
+    manifest[target][pkg.name] = pkg.version;
   }
 
   for (const pkgName of removePackageNames) {
@@ -317,6 +321,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       // Try to load config to find universal packages
       let universalPackages: { name: string; version: string }[] = [];
       let syntheticUniversal: { name: string; version: string }[] = [];
+      let devPackages = new Set<string>();
       try {
         const config = await loadConfig(options.config, options.configName, options.configKey);
         const normalized = normalizeConfig(config);
@@ -328,6 +333,10 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
               universalPackages.push({ name: pkgName, version: spec.version });
             }
           }
+        }
+        // Build devPackages set from normalized config
+        for (const [pkgName, spec] of Object.entries(normalized.packages)) {
+          if (spec.dev) devPackages.add(pkgName);
         }
       } catch {
         // No config found — pure npm install
@@ -430,7 +439,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
         if (staging.relinked.length > 0) {
           console.log(`  ↳ Re-linked ${staging.relinked.length} internal dependency(ies)`);
         }
-        await injectStagedPackages(projectPath, staging.staged, []);
+        await injectStagedPackages(projectPath, staging.staged, [], [], undefined, devPackages);
         for (const pkg of storeResolved) {
           result.installed.push(pkg);
         }
@@ -442,7 +451,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
         for (const pkg of npmRegistry) {
           console.log(`  - ${pkg.name}@${pkg.version}`);
         }
-        await injectStagedPackages(projectPath, [], [], npmRegistry);
+        await injectStagedPackages(projectPath, [], [], npmRegistry, undefined, devPackages);
         for (const pkg of npmRegistry) {
           result.installed.push({
             name: pkg.name,
@@ -465,8 +474,10 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   
   // Build synthetic packages set
   const syntheticPackages = new Set<string>();
+  const devPackages = new Set<string>();
   for (const [pkgName, spec] of Object.entries(normalized.packages)) {
     if (spec.synthetic) syntheticPackages.add(pkgName);
+    if (spec.dev) devPackages.add(pkgName);
   }
   if (syntheticPackages.size > 0) {
     console.log(`\n🔗 ${syntheticPackages.size} synthetic package(s) (store-only):`);
@@ -656,7 +667,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     }
     
     // Phase 3: Inject into local package.json only
-    await injectStagedPackages(projectPath, staging.staged, removePackageNames, nonSyntheticRegistry, syntheticPackages);
+    await injectStagedPackages(projectPath, staging.staged, removePackageNames, nonSyntheticRegistry, syntheticPackages, devPackages);
     result.removed = removePackageNames;
     
     // Phase 4: npm install

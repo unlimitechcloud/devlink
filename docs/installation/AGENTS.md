@@ -54,6 +54,7 @@ Packages without a version for the current mode are removed from `package.json` 
 Projects use `devlink.config.mjs` to define:
 - Which packages to manage and their versions (per-mode object or universal string)
 - Synthetic flag for packages that should be staged to `.devlink/` instead of `package.json`
+- Dev flag for packages that should be injected into `devDependencies` instead of `dependencies`
 - Mode factories (top-level properties like `dev`, `remote`)
 - Mode detection logic (`detectMode`)
 - Namespace precedence (for store manager)

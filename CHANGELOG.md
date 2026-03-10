@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] - 2026-03-10
+
+### Added
+- `dev: true` package flag: packages marked with `dev: true` in the config are injected into `devDependencies` instead of `dependencies` in `package.json`
+- The flag is global (independent of mode or manager type) and has no effect on synthetic packages
+
 ## [2.3.2] - 2026-03-09
 
 ### Added
