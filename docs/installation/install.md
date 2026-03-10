@@ -431,7 +431,7 @@ When `--npm` is used with `manager: "store"`, DevLink uses a staging mechanism:
 7. Cleans broken bin symlinks and links bin entries for DevLink packages
 8. Updates lockfile and installations tracking
 
-The staging directory (`.devlink/`) is cleaned and recreated on each install.
+The staging directory (`.devlink/`) is fully cleaned at the start of each install run, then recreated as packages are staged. This ensures no stale packages from previous executions remain.
 
 ## Bin Linking
 

@@ -399,10 +399,9 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.4.0] - 2026-03-10
+### Latest: [2.4.1] - 2026-03-10
 
-- `dev: true` package flag: inject packages into `devDependencies` instead of `dependencies`
-- Global flag, independent of mode or manager type
+- Staging directory (`.devlink/`) is now fully cleaned at the start of every install run, preventing stale packages between executions
 
 📄 [Full Changelog](CHANGELOG.md)
 

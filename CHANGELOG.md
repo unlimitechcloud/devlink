@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.1] - 2026-03-10
+
+### Fixed
+- Staging directory (`.devlink/`) is now fully cleaned at the start of every `installPackages()` run, preventing stale packages from previous executions from remaining between DevLink runs
+
 ## [2.4.0] - 2026-03-10
 
 ### Added

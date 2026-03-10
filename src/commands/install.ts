@@ -313,6 +313,11 @@ async function runNpmInstall(runScripts: boolean = false): Promise<number> {
 export async function installPackages(options: InstallOptions = {}): Promise<InstallResult> {
   const projectPath = process.cwd();
 
+  // ── Clean staging directory at the start of every run ───────────────
+  // Ensures no stale packages from previous executions remain.
+  const stagingDir = path.join(projectPath, STAGING_DIR);
+  await fs.rm(stagingDir, { recursive: true, force: true });
+
   // ── No mode: npm primary, store (global) fallback ───────────────────
   if (!options.mode) {
     const result: InstallResult = { installed: [], removed: [], skipped: [] };
