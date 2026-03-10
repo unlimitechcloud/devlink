@@ -400,7 +400,7 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.5.0] - 2026-03-10
+### Latest: [2.5.1] - 2026-03-10
 
 - New `link` attribute for packages: skip store/npm resolution and resolve via `npm link`
 - Link support across all install flows (no-mode, mode+npm, direct copy)
