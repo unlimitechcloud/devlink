@@ -995,8 +995,6 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
 export async function handleInstall(args: {
   config?: string;
   mode?: string;
-  dev?: boolean;
-  prod?: boolean;
   namespaces?: string[];
   npm?: boolean;
   runScripts?: boolean;
@@ -1004,7 +1002,7 @@ export async function handleInstall(args: {
   configKey?: string;
 }): Promise<void> {
   try {
-    const mode = args.mode || (args.prod ? "prod" : args.dev ? "dev" : undefined);
+    const mode = args.mode;
     
     console.log(`📦 Installing packages${mode ? ` (${mode} mode)` : ""}...`);
     

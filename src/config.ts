@@ -31,7 +31,7 @@ export function createContext(
 /**
  * Carga y normaliza la configuración
  */
-export async function loadConfig(configPath: string): Promise<{
+export async function loadConfig(configPath: string, mode?: string): Promise<{
   config: DevLinkConfig;
   ctx: FactoryContext;
   mode: string;
@@ -55,28 +55,21 @@ export async function loadConfig(configPath: string): Promise<{
   if (!config.packages || typeof config.packages !== "object") {
     throw new Error("Configuration must have a 'packages' object");
   }
-  if (typeof config.dev !== "function") {
-    throw new Error("Configuration must have a 'dev' factory function");
-  }
 
   // Crear contexto
   const ctx = createContext(config.packages);
 
-  // Detectar modo por defecto
-  let mode = "dev";
-  if (ctx.env.SST_LOCAL === "true") mode = "dev";
-  else if (ctx.env.NODE_ENV === "development") mode = "dev";
-  else if (ctx.args.includes("--dev")) mode = "dev";
-  else if (ctx.args.includes("--mode=dev")) mode = "dev";
+  // Resolve mode: explicit --mode flag only, no implicit detection
+  const resolvedMode = mode ?? "dev";
 
   // Obtener configuración del modo
-  const modeFactory = config[mode] as ModeFactory | undefined;
+  const modeFactory = config[resolvedMode] as ModeFactory | undefined;
   if (!modeFactory || typeof modeFactory !== "function") {
-    throw new Error(`Mode "${mode}" is not defined in configuration`);
+    throw new Error(`Mode "${resolvedMode}" is not defined in configuration`);
   }
   const modeConfig = modeFactory(ctx);
 
-  return { config, ctx, mode, modeConfig };
+  return { config, ctx, mode: resolvedMode, modeConfig };
 }
 
 /**

@@ -108,8 +108,6 @@ program
   .option("--config-key <key>", "Key within the config export to extract DevLink config from (e.g. devlink)")
   .option("-n, --namespaces <list>", "Override namespace precedence (comma-separated)", commaSeparated)
   .option("-m, --mode <name>", "Set install mode (matches config mode name, e.g. dev, remote)")
-  .option("--dev", "Force dev mode (shorthand for --mode=dev)")
-  .option("--prod", "Force prod mode (shorthand for --mode=prod)")
   .option("--npm", "Run npm install before DevLink installs packages")
   .option("--run-scripts", "Allow npm scripts to run (default: scripts disabled)")
   .option("-r, --recursive", "Install recursively across all monorepo levels")
@@ -119,7 +117,7 @@ program
       const { scanTree } = await import("./core/tree.js");
       const { installMultiLevel } = await import("./core/multilevel.js");
 
-      const mode = opts.mode || (opts.prod ? "prod" : opts.dev ? "dev" : undefined);
+      const mode = opts.mode;
 
       console.log(`📂 Scanning monorepo...`);
       const tree = await scanTree(process.cwd());
@@ -147,8 +145,6 @@ program
       await handleInstall({
         config: opts.config,
         mode: opts.mode,
-        dev: opts.dev,
-        prod: opts.prod,
         namespaces: opts.namespaces,
         npm: opts.npm,
         runScripts: opts.runScripts,
