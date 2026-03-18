@@ -103,6 +103,7 @@ program
 program
   .command("install")
   .description("Install packages from the store into a project")
+  .argument("[packages...]", "Specific packages to install (must be defined in config)")
   .option("-c, --config <path>", "Path to config file")
   .option("--config-name <filename>", "Config file name to search for at every level (e.g. webforgeai.config.mjs)")
   .option("--config-key <key>", "Key within the config export to extract DevLink config from (e.g. devlink)")
@@ -110,7 +111,7 @@ program
   .option("-m, --mode <name>", "Set install mode (matches config mode name, e.g. dev, remote)")
   .option("--npm-ignore-scripts", "Propagate --ignore-scripts to npm install")
   .option("-r, --recursive", "Install recursively across all monorepo levels")
-  .action(async (opts) => {
+  .action(async (packages: string[], opts) => {
     if (opts.recursive) {
       // Recursive mode: use multi-level installer
       const { scanTree } = await import("./core/tree.js");
@@ -147,6 +148,7 @@ program
         npmIgnoreScripts: opts.npmIgnoreScripts,
         configName: opts.configName,
         configKey: opts.configKey,
+        packages: packages.length > 0 ? packages : undefined,
       });
     }
   });

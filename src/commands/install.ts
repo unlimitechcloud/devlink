@@ -258,6 +258,8 @@ export interface InstallOptions {
   configName?: string;
   /** Key within the config export to extract DevLink config from (e.g. "devlink") */
   configKey?: string;
+  /** Filter: only process these packages (must exist in config) */
+  packages?: string[];
 }
 
 export interface InstallResult {
@@ -349,6 +351,9 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   if (!options.mode) {
     const result: InstallResult = { installed: [], removed: [], skipped: [], linked: [] };
 
+    // Build package filter set (if positional packages were specified)
+    const packageFilter = options.packages?.length ? new Set(options.packages) : null;
+
     // Try to load config to find universal packages
     let universalPackages: { name: string; version: string }[] = [];
     let syntheticUniversal: { name: string; version: string }[] = [];
@@ -356,14 +361,28 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     let linkPackages: { name: string; linkPath: string }[] = [];
     try {
       const config = await loadConfig(options.config, options.configName, options.configKey);
+
+      // Validate that all filtered packages exist in config
+      if (packageFilter) {
+        for (const name of packageFilter) {
+          if (!config.packages[name]) {
+            throw new Error(`Package "${name}" is not defined in the configuration`);
+          }
+        }
+      }
+
       const normalized = normalizeConfig(config);
       for (const [pkgName, spec] of Object.entries(config.packages)) {
         if (isNewFormat(spec) && typeof spec.version === "string") {
           // Packages with link skip staging/resolution entirely
           if (spec.link) {
-            linkPackages.push({ name: pkgName, linkPath: spec.link });
+            if (!packageFilter || packageFilter.has(pkgName)) {
+              linkPackages.push({ name: pkgName, linkPath: spec.link });
+            }
             continue;
           }
+          // Apply package filter: only resolve filtered packages
+          if (packageFilter && !packageFilter.has(pkgName)) continue;
           if (normalized.packages[pkgName]?.synthetic) {
             syntheticUniversal.push({ name: pkgName, version: spec.version });
           } else {
@@ -375,7 +394,9 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       for (const [pkgName, spec] of Object.entries(normalized.packages)) {
         if (spec.dev) devPackages.add(pkgName);
       }
-    } catch {
+    } catch (err) {
+      // If packages were specified, config is required — re-throw
+      if (packageFilter) throw err;
       // No config found — pure npm install
     }
 
@@ -524,6 +545,18 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
 
   const config = await loadConfig(options.config, options.configName, options.configKey);
   
+  // Build package filter set (if positional packages were specified)
+  const packageFilter = options.packages?.length ? new Set(options.packages) : null;
+
+  // Validate that all filtered packages exist in config
+  if (packageFilter) {
+    for (const name of packageFilter) {
+      if (!config.packages[name]) {
+        throw new Error(`Package "${name}" is not defined in the configuration`);
+      }
+    }
+  }
+
   // Normalize config once at the top level
   const normalized = normalizeConfig(config);
   
@@ -571,7 +604,9 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
   const linkPackagesForMode: { name: string; linkPath: string }[] = [];
   for (const [pkgName, spec] of Object.entries(config.packages)) {
     if (isNewFormat(spec) && spec.link) {
-      linkPackagesForMode.push({ name: pkgName, linkPath: spec.link });
+      if (!packageFilter || packageFilter.has(pkgName)) {
+        linkPackagesForMode.push({ name: pkgName, linkPath: spec.link });
+      }
     }
   }
   
@@ -605,6 +640,9 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
       removePackageNames.push(pkgName);
       continue;
     }
+
+    // Apply package filter: only resolve filtered packages (removal still applies to all)
+    if (packageFilter && !packageFilter.has(pkgName)) continue;
     
     if (isNpmManager) {
       // npm manager: npm is primary, store is fallback
@@ -825,11 +863,13 @@ export async function handleInstall(args: {
   npmIgnoreScripts?: boolean;
   configName?: string;
   configKey?: string;
+  packages?: string[];
 }): Promise<void> {
   try {
     const mode = args.mode;
     
-    console.log(`📦 Installing packages${mode ? ` (${mode} mode)` : ""}...`);
+    const pkgLabel = args.packages?.length ? ` (${args.packages.length} selected)` : "";
+    console.log(`📦 Installing packages${mode ? ` (${mode} mode)` : ""}${pkgLabel}...`);
     
     const result = await installPackages({
       config: args.config,
@@ -838,6 +878,7 @@ export async function handleInstall(args: {
       npmIgnoreScripts: args.npmIgnoreScripts,
       configName: args.configName,
       configKey: args.configKey,
+      packages: args.packages,
     });
     
     if (result.installed.length > 0) {

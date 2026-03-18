@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Selective package install: `dev-link install [packages...]` accepts positional arguments to install only specific packages from the config
+  - Packages must be pre-defined in `devlink.config.mjs` — error if not found
+  - Filter applies only to resolution/staging phase; removal of orphan packages and `npm install` run normally
+  - Works with all package types: normal, synthetic, link, dev
+
 ### Changed
 - `loadConfig()` API: `mode` and `modeConfig` can now be `undefined` when no mode is specified (previously defaulted to `"dev"`)
 - Install flow: staging + `npm install` is now the only flow — npm always runs, no conditional
