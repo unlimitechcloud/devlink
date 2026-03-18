@@ -44,6 +44,10 @@ Package versions support two formats:
 - **Per-mode object**: `{ version: { dev: "1.0.0", remote: "1.0.0" } }` — different versions per mode
 - **Universal string**: `{ version: "1.0.0" }` — same version for all modes
 
+## Selective Install
+
+When positional arguments are provided (`dev-link install @scope/core @scope/utils`), only those packages are resolved/staged. All other steps (removal, npm install, bin linking) run normally. Each package must exist in the config — an error is thrown otherwise.
+
 ## Package Removal
 
 Packages without a version for the current mode are removed from `package.json` during install. This enables mode-specific package sets.

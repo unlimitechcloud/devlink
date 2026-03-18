@@ -75,6 +75,7 @@ dev-link push                 # Publish + update all consumers
 dev-link install --mode dev     # Install from store using devlink.config.mjs
 dev-link install --mode remote  # Install from npm registry
 dev-link install                # Universal packages only (no mode)
+dev-link install @scope/core --mode dev  # Install only specific package(s)
 ```
 
 ### Feature Branch Isolation

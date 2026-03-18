@@ -5,8 +5,10 @@ Installs packages from the DevLink store into a project.
 ## Usage
 
 ```bash
-dev-link install [options]
+dev-link install [packages...] [options]
 ```
+
+When `packages` are specified, only those packages are resolved/staged — all other install steps (removal, npm install, bin linking) run normally. Each package must be defined in the config.
 
 ## Options
 
@@ -111,6 +113,17 @@ dev-link install -n feature-v2,global
 ```bash
 dev-link install -c ./config/devlink.config.mjs
 ```
+
+### Selective Install
+
+```bash
+dev-link install @scope/core                          # Install only @scope/core
+dev-link install @scope/core @scope/utils             # Install two specific packages
+dev-link install @scope/core --mode dev               # Selective + mode
+dev-link install @scope/core @scope/utils --mode dev  # Multiple packages + mode
+```
+
+When packages are specified as positional arguments, only those packages are resolved and staged. All other install steps (orphan removal, npm install, bin linking) run normally against the full config. Each specified package must already be defined in `devlink.config.mjs` — an error is thrown if any package is not found in the config.
 
 ### Combined Examples
 
