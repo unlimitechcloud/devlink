@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-03-18
+
 ### Added
 - Selective package install: `dev-link install [packages...]` accepts positional arguments to install only specific packages from the config
   - Packages must be pre-defined in `devlink.config.mjs` — error if not found
@@ -24,9 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `--run-scripts` CLI flag: replaced by `--npm-ignore-scripts` (inverted logic)
 - Legacy "direct copy to node_modules" flow: all installs now go through staging + `file:` protocol injection + `npm install`
 - Implicit mode detection from `process.argv` in `loadConfig()` API: now accepts an explicit `mode` parameter
-
-### Docs
-- Aligned all documentation (`install.md`, `configuration.md`, `AGENTS.md`, `docs/AGENTS.md`) with code changes: removed all references to `--npm`, `--dev`, `--prod`, "direct copy" flow, and `beforeEach`/`afterEach` lifecycle hooks
 
 ## [2.5.2] - 2026-03-10
 

@@ -58,7 +58,7 @@ export default {
 
 ```bash
 cd my-project
-dev-link install --dev --npm
+dev-link install --mode dev
 ```
 
 DevLink copies the packages from the store to your `node_modules`.
@@ -80,7 +80,7 @@ This publishes the new version AND automatically updates all consumer projects.
 |---------|-------------|----------------|
 | `publish` | Publish package to the store | `-n, --namespace` |
 | `push` | Publish and update all consumers | `-n, --namespace` |
-| `install` | Install packages from store/registry | `-m, --mode`, `--dev`, `--npm`, `--recursive` |
+| `install` | Install packages from store/registry | `-m, --mode`, `--npm-ignore-scripts`, `--recursive` |
 | `list` | List packages in store | `-n`, `-p`, `--flat` |
 | `resolve` | Debug package resolution | `-n, --namespaces` |
 | `consumers` | List/manage consumer projects | `--prune` |
@@ -116,13 +116,13 @@ dev-link push -n feature-v2         # Push to specific namespace
 Installs packages from the store or registry based on your `devlink.config.mjs`. Resolution uses bidirectional fallback: store-primary flows fall back to npm, and npm-primary flows fall back to the store — per-package, with clear warnings. When no mode is specified, universal packages are resolved with npm as primary and store (global) as fallback.
 
 ```bash
-dev-link install                        # No resolution (no --npm)
-dev-link install --npm                  # Universal packages + npm install
-dev-link install --mode dev --npm       # Dev mode with npm integration
-dev-link install --mode remote --npm    # Remote mode (registry resolution)
-dev-link install --dev --npm            # Shorthand for --mode dev
+dev-link install                        # Universal packages + npm install
+dev-link install --mode dev             # Dev mode (store primary)
+dev-link install --mode remote          # Remote mode (registry resolution)
+dev-link install @scope/core --mode dev # Selective install (specific packages only)
 dev-link install -n feature,global      # Override namespace precedence
-dev-link install --recursive --npm      # Recursive npm install across monorepo
+dev-link install --recursive            # Recursive install across monorepo
+dev-link install --npm-ignore-scripts   # Skip npm lifecycle scripts
 ```
 
 #### `dev-link list`
@@ -316,8 +316,8 @@ Replace `npm install` with DevLink during development using npm lifecycle hooks:
 ```json
 {
   "scripts": {
-    "dev:install": "dev-link install --mode dev --npm",
-    "remote:install": "dev-link install --mode remote --npm"
+    "dev:install": "dev-link install --mode dev",
+    "remote:install": "dev-link install --mode remote"
   }
 }
 ```
@@ -400,9 +400,12 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.5.2] - 2026-03-10
+### Latest: [2.6.0] - 2026-03-18
 
-- `tree` command now detects sub-packages under `packages/` even without `workspaces` field
+- Selective package install via positional arguments (`dev-link install [packages...]`)
+- Simplified CLI: `--mode <name>` is the only mode flag; `--npm-ignore-scripts` replaces `--run-scripts`
+- Staging + npm install is now the only flow — legacy direct copy removed
+- All documentation aligned with new CLI surface
 
 📄 [Full Changelog](CHANGELOG.md)
 
