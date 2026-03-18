@@ -7,9 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- `loadConfig()` API: `mode` and `modeConfig` can now be `undefined` when no mode is specified (previously defaulted to `"dev"`)
+- Install flow: staging + `npm install` is now the only flow — npm always runs, no conditional
+- `MultiLevelInstallOptions`: replaced `runNpm`/`runScripts` with `npmIgnoreScripts` (inverted logic, default `false`)
+
 ### Removed
 - `--dev` and `--prod` CLI flags: use `--mode dev` or `--mode prod` instead
-- Implicit mode detection from `process.argv` in `loadConfig()` API: now accepts an explicit `mode` parameter (defaults to `"dev"` when omitted)
+- `--npm` CLI flag: npm install now always runs as part of the install flow
+- `--run-scripts` CLI flag: replaced by `--npm-ignore-scripts` (inverted logic)
+- Legacy "direct copy to node_modules" flow: all installs now go through staging + `file:` protocol injection + `npm install`
+- Implicit mode detection from `process.argv` in `loadConfig()` API: now accepts an explicit `mode` parameter
+
+### Docs
+- Aligned all documentation (`install.md`, `configuration.md`, `AGENTS.md`, `docs/AGENTS.md`) with code changes: removed all references to `--npm`, `--dev`, `--prod`, "direct copy" flow, and `beforeEach`/`afterEach` lifecycle hooks
 
 ## [2.5.2] - 2026-03-10
 

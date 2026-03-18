@@ -69,7 +69,7 @@ packages: {
 }
 ```
 
-Relative paths are resolved against the project root. The `link` attribute works in all three install flows (no-mode, mode+npm, and direct copy). The `version` field is still required for config validation but is not used for resolution.
+Relative paths are resolved against the project root. The `link` attribute works in all install flows (no-mode, store manager, npm manager). The `version` field is still required for config validation but is not used for resolution.
 
 ### dev
 
@@ -103,7 +103,7 @@ packages: {
 }
 ```
 
-If a package doesn't have a version for the current mode, it will be removed from `package.json` during `--npm` installs, or skipped during direct copy installs.
+If a package doesn't have a version for the current mode, it will be removed from `package.json` during install, or skipped if no mode is active.
 
 ### Mode Factories
 
@@ -141,7 +141,7 @@ detectMode: (ctx) => {
 }
 ```
 
-If `detectMode` is not defined and no `--mode` flag is provided, defaults to `"dev"`.
+If `detectMode` is not defined and no `--mode` flag is provided, no mode is active — only universal packages are resolved.
 
 ## Context Object
 
@@ -171,7 +171,7 @@ Uses the DevLink store to resolve packages:
 
 ### npm
 
-Packages are resolved by npm from the configured registry. When used with `--npm`, DevLink injects packages as exact versions into a temporary `package.json`.
+Packages are resolved by npm from the configured registry. DevLink verifies each package via `npm view` and injects them as exact versions into a temporary `package.json` for npm to resolve. If a package is not found in npm, DevLink falls back to the store (mode namespaces) and stages it via `file:` protocol.
 
 ```javascript
 {
@@ -228,20 +228,15 @@ export default {
 The mode is determined by (in priority order):
 
 1. `--mode <name>` CLI flag
-2. `--dev` shorthand (equivalent to `--mode dev`)
-3. `--prod` shorthand (equivalent to `--mode prod`)
-4. `detectMode()` function in config
-5. Default: `"dev"`
+2. `detectMode()` function in config
+3. If none specified → no mode (universal packages only)
 
 ```bash
 # Explicit mode
-dev-link install --mode remote --npm
-
-# Shorthand
-dev-link install --dev --npm
+dev-link install --mode remote
 
 # Auto-detect via detectMode()
-dev-link install --npm
+dev-link install
 ```
 
 ## Namespace Override
@@ -307,7 +302,7 @@ packages: {
 
 ### Mode-Specific Package Sets
 
-Packages without a version for a mode are removed during `--npm` installs:
+Packages without a version for a mode are removed during install:
 
 ```javascript
 packages: {

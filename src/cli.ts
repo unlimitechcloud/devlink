@@ -108,8 +108,7 @@ program
   .option("--config-key <key>", "Key within the config export to extract DevLink config from (e.g. devlink)")
   .option("-n, --namespaces <list>", "Override namespace precedence (comma-separated)", commaSeparated)
   .option("-m, --mode <name>", "Set install mode (matches config mode name, e.g. dev, remote)")
-  .option("--npm", "Run npm install before DevLink installs packages")
-  .option("--run-scripts", "Allow npm scripts to run (default: scripts disabled)")
+  .option("--npm-ignore-scripts", "Propagate --ignore-scripts to npm install")
   .option("-r, --recursive", "Install recursively across all monorepo levels")
   .action(async (opts) => {
     if (opts.recursive) {
@@ -127,8 +126,7 @@ program
         const result = await installMultiLevel({
           tree,
           mode,
-          runNpm: opts.npm ?? false,
-          runScripts: opts.runScripts,
+          npmIgnoreScripts: opts.npmIgnoreScripts,
           config: opts.config,
           configName: opts.configName,
           configKey: opts.configKey,
@@ -146,8 +144,7 @@ program
         config: opts.config,
         mode: opts.mode,
         namespaces: opts.namespaces,
-        npm: opts.npm,
-        runScripts: opts.runScripts,
+        npmIgnoreScripts: opts.npmIgnoreScripts,
         configName: opts.configName,
         configKey: opts.configKey,
       });

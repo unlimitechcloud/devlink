@@ -36,7 +36,7 @@ import { installPackages } from "../commands/install.js";
 export async function installMultiLevel(
   options: MultiLevelInstallOptions,
 ): Promise<MultiLevelInstallResult> {
-  const { tree, mode, runNpm, runScripts, config, configName, configKey } = options;
+  const { tree, mode, npmIgnoreScripts, config, configName, configKey } = options;
   const results: LevelResult[] = [];
   const startTime = Date.now();
 
@@ -44,7 +44,7 @@ export async function installMultiLevel(
   const rootLevel = tree.installLevels[0];
   console.log(`\n── Level 1: ${rootLevel.relativePath} (root) ──`);
 
-  const rootResult = await installAtRootLevel(rootLevel, mode, runNpm, runScripts, config, configName, configKey);
+  const rootResult = await installAtRootLevel(rootLevel, mode, npmIgnoreScripts, config, configName, configKey);
   results.push(rootResult);
 
   if (!rootResult.success) {
@@ -72,19 +72,7 @@ export async function installMultiLevel(
 
     console.log(`\n── Isolated: ${isoLevel.relativePath} ──`);
 
-    let isoResult: LevelResult;
-    if (runNpm) {
-      isoResult = await runNpmAtLevel(isoLevel, runScripts);
-    } else {
-      // No npm flag — skip
-      isoResult = {
-        path: isoLevel.path,
-        relativePath: isoLevel.relativePath,
-        success: true,
-        duration: 0,
-  
-      };
-    }
+    const isoResult = await runNpmAtLevel(isoLevel, npmIgnoreScripts);
     results.push(isoResult);
 
     if (!isoResult.success) {
@@ -114,8 +102,7 @@ export async function installMultiLevel(
 async function installAtRootLevel(
   level: InstallLevel,
   mode: string | undefined,
-  runNpm: boolean,
-  runScripts?: boolean,
+  npmIgnoreScripts?: boolean,
   configOverride?: string,
   configName?: string,
   configKey?: string,
@@ -128,15 +115,14 @@ async function installAtRootLevel(
     try {
       const result = await installPackages({
         mode,
-        runNpm,
-        runScripts,
+        npmIgnoreScripts,
         config: configOverride,
         configName,
         configKey,
       });
 
       // Check for npm install failure
-      if (runNpm && result.npmExitCode !== undefined && result.npmExitCode !== 0) {
+      if (result.npmExitCode !== undefined && result.npmExitCode !== 0) {
         return {
           path: level.path,
           relativePath: level.relativePath,
@@ -184,7 +170,7 @@ async function installAtRootLevel(
  */
 export async function runNpmAtLevel(
   level: InstallLevel,
-  runScripts?: boolean,
+  npmIgnoreScripts?: boolean,
 ): Promise<LevelResult> {
   const startTime = Date.now();
   const originalCwd = process.cwd();
@@ -192,7 +178,7 @@ export async function runNpmAtLevel(
   try {
     process.chdir(level.path);
     try {
-      const exitCode = await runNpmInstall(runScripts);
+      const exitCode = await runNpmInstall(npmIgnoreScripts);
       if (exitCode !== 0) {
         throw new Error(`npm install exited with code ${exitCode} at level: ${level.relativePath}`);
       }
@@ -221,10 +207,10 @@ export async function runNpmAtLevel(
 /**
  * Run `npm install` in the current directory.
  */
-async function runNpmInstall(runScripts: boolean = false): Promise<number> {
+async function runNpmInstall(ignoreScripts: boolean = false): Promise<number> {
   return new Promise((resolve) => {
     const args = ["install", "--no-audit", "--legacy-peer-deps"];
-    if (!runScripts) {
+    if (ignoreScripts) {
       args.push("--ignore-scripts");
     }
 

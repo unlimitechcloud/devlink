@@ -72,16 +72,16 @@ dev-link push                 # Publish + update all consumers
 ### Install in Consumer Project
 
 ```bash
-dev-link install --dev        # Install from store using devlink.config.mjs
-dev-link install --dev --npm  # With npm dependency resolution
-dev-link install --npm        # Universal packages + npm install (no mode)
+dev-link install --mode dev     # Install from store using devlink.config.mjs
+dev-link install --mode remote  # Install from npm registry
+dev-link install                # Universal packages only (no mode)
 ```
 
 ### Feature Branch Isolation
 
 ```bash
 dev-link publish -n feature-v2           # Publish to feature namespace
-dev-link install --dev -n feature-v2,global  # Consumer resolves feature first
+dev-link install --mode dev -n feature-v2,global  # Consumer resolves feature first
 dev-link remove feature-v2               # Clean up after merge
 ```
 

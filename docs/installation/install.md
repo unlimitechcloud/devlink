@@ -12,32 +12,34 @@ dev-link install [options]
 
 | Option | Description |
 |--------|-------------|
-| `-m, --mode <name>` | Set install mode (e.g. `dev`, `remote`). When omitted, runs npm-only without package resolution |
+| `-m, --mode <name>` | Set install mode (e.g. `dev`, `remote`). When omitted, installs universal packages only |
 | `-n, --namespaces <list>` | Override namespace precedence (comma-separated) |
 | `-c, --config <path>` | Path to config file |
-| `--dev` | Force dev mode (shorthand for `--mode dev`) |
-| `--prod` | Force prod mode (shorthand for `--mode prod`) |
+| `--config-name <filename>` | Config file name to search for (e.g. `webforgeai.config.mjs`) |
+| `--config-key <key>` | Key within the config export to extract DevLink config from (e.g. `devlink`) |
+| `--npm-ignore-scripts` | Propagate `--ignore-scripts` to `npm install` |
+| `-r, --recursive` | Install recursively across all monorepo levels |
 | `--repo <path>` | Use custom repo path |
-| `--npm` | Run `npm install` with DevLink package management |
 
 ## Description
 
 The `install` command:
 
 1. Reads `devlink.config.mjs` from the project (if available)
-2. Determines the mode (via `--mode`, `--dev`/`--prod` shorthands, or `detectMode`)
+2. Determines the mode (via `--mode` or `detectMode`)
 3. Resolves packages using namespace precedence (store manager) or injects them for registry resolution (npm manager)
 4. Removes packages that don't have a version for the current mode
-5. Copies packages to `node_modules` (or stages them for `--npm` flow)
-6. Cleans broken bin symlinks and links new bin entries into `node_modules/.bin/`
-7. Registers the project as a consumer
-8. Creates/updates `devlink.lock`
+5. Stages packages to `.devlink/` and injects `file:` protocols into `package.json`
+6. Runs `npm install`
+7. Cleans broken bin symlinks and links new bin entries into `node_modules/.bin/`
+8. Registers the project as a consumer
+9. Creates/updates `devlink.lock`
 
 When `--mode` is omitted, the command:
 - Loads the config file (if available)
 - Resolves packages with universal versions (`version: "1.0.0"`) — these are injected into `package.json` for npm to resolve
 - Skips packages with per-mode versions (since no mode is active)
-- Runs `npm install` if `--npm` is set
+- Runs `npm install`
 
 This means universal packages are always resolved regardless of mode, while per-mode packages require an explicit mode to be installed.
 
@@ -78,8 +80,8 @@ See [Configuration](configuration.md) for full reference.
 ### Install without Mode (universal packages only)
 
 ```bash
-dev-link install --npm                    # Resolves universal packages + npm install
-dev-link install --recursive --npm        # Recursive across monorepo levels
+dev-link install                          # Resolves universal packages + npm install
+dev-link install --recursive              # Recursive across monorepo levels
 ```
 
 When no `--mode` is specified, DevLink resolves only packages with universal versions (`version: "1.0.0"`), injects them into `package.json`, and runs `npm install`. Per-mode packages are ignored.
@@ -98,13 +100,6 @@ dev-link install --mode dev
 dev-link install --mode remote
 ```
 
-### Shorthand Flags
-
-```bash
-dev-link install --dev    # same as --mode dev
-dev-link install --prod   # same as --mode prod
-```
-
 ### Override Namespaces
 
 ```bash
@@ -117,14 +112,17 @@ dev-link install -n feature-v2,global
 dev-link install -c ./config/devlink.config.mjs
 ```
 
-### Combined with npm install
+### Combined Examples
 
 ```bash
 # Dev: stage from store + npm install
-dev-link install --mode dev --npm
+dev-link install --mode dev
 
 # Remote: inject registry versions + npm install
-dev-link install --mode remote --npm
+dev-link install --mode remote
+
+# Skip npm lifecycle scripts
+dev-link install --mode dev --npm-ignore-scripts
 ```
 
 ## Mode System
@@ -142,17 +140,16 @@ export default {
 
 The mode is determined by (in priority order):
 1. `--mode <name>` CLI flag
-2. `--dev` / `--prod` shorthand flags
-3. `detectMode()` function in config
-4. If none specified → no mode (npm-only install, no package resolution)
+2. `detectMode()` function in config
+3. If none specified → no mode (universal packages only)
 
 ### No-Mode Behavior
 
-When no mode is specified (no `--mode`, no `--dev`/`--prod`, no `detectMode`), the install command:
+When no mode is specified (no `--mode`, no `detectMode`), the install command:
 - Loads the config file if available
 - Resolves packages with universal versions (`version: "1.0.0"`) using bidirectional fallback (npm primary → store global fallback)
 - Skips packages with per-mode versions (no active mode to match)
-- Runs `npm install` if `--npm` is set
+- Runs `npm install`
 
 For each universal package, DevLink checks npm first (`npm view`). If the package exists in npm, it is injected into `package.json` as a registry dependency. If not found in npm, DevLink falls back to the store's `global` namespace — staging the package via `file:` protocol so npm can resolve it locally.
 
@@ -162,7 +159,7 @@ This ensures universal packages are always installed regardless of mode. Project
 
 ## Package Removal
 
-If a package in the config doesn't have a version for the current mode, it is removed from `package.json` during the `--npm` flow. This allows mode-specific package sets:
+If a package in the config doesn't have a version for the current mode, it is removed from `package.json` during install. This allows mode-specific package sets:
 
 ```javascript
 packages: {
@@ -171,7 +168,7 @@ packages: {
 }
 ```
 
-When running `--mode remote --npm`, `@scope/dev-tools` will be removed from the temporary `package.json` before `npm install` runs.
+When running `--mode remote`, `@scope/dev-tools` will be removed from the temporary `package.json` before `npm install` runs.
 
 ## Bidirectional Fallback Resolution
 
@@ -246,9 +243,8 @@ packages: {
 
 | Flow | Primary | Fallback |
 |------|---------|----------|
-| `--npm` + store manager | Staged from store to `.devlink/` | Downloaded via `npm pack` to `.devlink/` |
-| `--npm` + npm manager | Downloaded via `npm pack` to `.devlink/` | Staged from store (mode namespaces) to `.devlink/` |
-| Direct copy (no `--npm`) | Copied from store to `.devlink/` | Downloaded via `npm pack` to `.devlink/` |
+| Store manager | Staged from store to `.devlink/` | Downloaded via `npm pack` to `.devlink/` |
+| npm manager | Downloaded via `npm pack` to `.devlink/` | Staged from store (mode namespaces) to `.devlink/` |
 | No-mode + universal | Downloaded via `npm pack` to `.devlink/` | Copied from store (global) to `.devlink/` |
 
 In all cases, synthetic packages end up in `.devlink/{packageName}/` and are never injected into `package.json`.
@@ -277,14 +273,14 @@ After install, DevLink runs `npm link <resolved-path>` for each linked package. 
   ✓ Linked 1 package(s)
 ```
 
-Link works in all three install flows (no-mode, mode+npm, and direct copy). Relative paths are resolved against the project root.
+Link works in all install flows (no-mode, store manager, npm manager). Relative paths are resolved against the project root.
 
 ## Resolution Process
 
 For each package in the config:
 
 1. Get version for current mode (or universal version if no mode)
-2. If no version exists for this mode → mark for removal (--npm flow)
+2. If no version exists for this mode → mark for removal
 3. Determine primary source based on scenario:
    - No mode → npm primary
    - `manager: "npm"` → npm primary
@@ -351,7 +347,7 @@ Installing registers your project in `installations.json`, enabling:
 
 ### store
 
-Uses the DevLink store to resolve packages. Packages are copied from the local store to `node_modules`.
+Uses the DevLink store as the primary source. Packages are staged to `.devlink/` and injected as `file:` dependencies into `package.json`, then resolved via `npm install`. If a package is not found in the store, DevLink falls back to npm (`npm view` check).
 
 ```javascript
 dev: () => ({
@@ -362,7 +358,7 @@ dev: () => ({
 
 ### npm
 
-Packages are resolved by npm from the configured registry (e.g. GitHub Packages, npmjs.org). When used with `--npm`, DevLink injects the packages as exact versions into a temporary `package.json` so npm can resolve them.
+Uses the npm registry as the primary source. Packages are verified via `npm view` and injected as exact versions into `package.json` for npm to resolve. If a package is not found in npm, DevLink falls back to the store (mode namespaces) and stages it via `file:` protocol.
 
 ```javascript
 remote: () => ({
@@ -406,9 +402,7 @@ The mode specified via `--mode` doesn't have a corresponding factory function in
 
 ## npm Integration
 
-### Using --npm Flag
-
-The `--npm` flag enables DevLink's npm integration. Behavior depends on the manager type:
+DevLink always runs `npm install` as part of the install flow. Behavior depends on the manager type:
 
 **Store manager (`manager: "store"`):**
 1. Resolves packages from the DevLink store (primary)
@@ -432,18 +426,18 @@ The `--npm` flag enables DevLink's npm integration. Behavior depends on the mana
 ```json
 {
   "scripts": {
-    "dev:install": "dev-link install --mode dev --npm",
-    "remote:install": "dev-link install --mode remote --npm"
+    "dev:install": "dev-link install --mode dev",
+    "remote:install": "dev-link install --mode remote"
   }
 }
 ```
 
-## Staging Flow (--npm with store manager)
+## Staging Flow
 
-When `--npm` is used with `manager: "store"`, DevLink uses a staging mechanism:
+DevLink uses a staging mechanism for all install flows:
 
-1. Resolves all packages from the store
-2. Copies them to a local `.devlink/` staging directory inside the project
+1. Resolves all packages from the primary source (store or npm)
+2. Stages store-resolved packages to a local `.devlink/` directory inside the project
 3. Rewrites internal dependencies between staged packages to `file:` relative paths (using semver matching)
 4. Temporarily injects staged packages as `file:` dependencies in `package.json`
 5. Runs `npm install` (which resolves both npm and staged packages)
@@ -469,8 +463,6 @@ dev: (ctx) => ({
   namespaces: ["global"],
   beforeAll: async () => { /* runs once before any package is installed */ },
   afterAll: async () => { /* runs once after all packages are installed */ },
-  beforeEach: async (pkg) => { /* runs before each package install */ },
-  afterEach: async (pkg) => { /* runs after each package install */ },
 })
 ```
 
@@ -478,10 +470,6 @@ dev: (ctx) => ({
 |------|-----------|------|
 | `beforeAll` | `() => void` | Before any package is installed |
 | `afterAll` | `() => void` | After all packages are installed |
-| `beforeEach` | `(pkg: ResolvedPackage) => void` | Before each package (direct copy mode only) |
-| `afterEach` | `(pkg: ResolvedPackage) => void` | After each package (direct copy mode only) |
-
-Note: `beforeEach`/`afterEach` are only called in direct copy mode (without `--npm`). The staging flow calls `beforeAll`/`afterAll` only.
 
 ## See Also
 

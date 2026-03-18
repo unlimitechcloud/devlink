@@ -34,8 +34,8 @@ export function createContext(
 export async function loadConfig(configPath: string, mode?: string): Promise<{
   config: DevLinkConfig;
   ctx: FactoryContext;
-  mode: string;
-  modeConfig: ModeConfig;
+  mode: string | undefined;
+  modeConfig: ModeConfig | undefined;
 }> {
   const absolutePath = path.isAbsolute(configPath)
     ? configPath
@@ -59,17 +59,19 @@ export async function loadConfig(configPath: string, mode?: string): Promise<{
   // Crear contexto
   const ctx = createContext(config.packages);
 
-  // Resolve mode: explicit --mode flag only, no implicit detection
-  const resolvedMode = mode ?? "dev";
+  // When no mode is specified, return config without mode resolution
+  if (!mode) {
+    return { config, ctx, mode: undefined, modeConfig: undefined };
+  }
 
   // Obtener configuración del modo
-  const modeFactory = config[resolvedMode] as ModeFactory | undefined;
+  const modeFactory = config[mode] as ModeFactory | undefined;
   if (!modeFactory || typeof modeFactory !== "function") {
-    throw new Error(`Mode "${resolvedMode}" is not defined in configuration`);
+    throw new Error(`Mode "${mode}" is not defined in configuration`);
   }
   const modeConfig = modeFactory(ctx);
 
-  return { config, ctx, mode: resolvedMode, modeConfig };
+  return { config, ctx, mode, modeConfig };
 }
 
 /**

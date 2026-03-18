@@ -6,7 +6,7 @@ Commands and configuration for installing packages from the DevLink store or reg
 
 | Document | Description |
 |----------|-------------|
-| `install.md` | Install command usage, options, modes, --npm flows |
+| `install.md` | Install command usage, options, modes, flows |
 | `configuration.md` | `devlink.config.mjs` reference, mode factories, lifecycle hooks |
 
 ## Install Modes
@@ -32,12 +32,11 @@ The fallback strategy is identical for synthetic and non-synthetic packages — 
 
 ## Install Flows
 
-- **No mode** (`--npm` without `--mode`): Resolves universal packages (`version: "1.0.0"`) with npm as primary and store (global) as fallback. Non-synthetic packages are checked via `npm view` — if found, injected into `package.json`; if not, staged from store via `file:` protocol. Synthetic packages use `npm pack` primary → store global copy fallback. Per-mode packages are skipped.
-- **Direct copy** (default with mode): Copies packages directly to `node_modules/`. Synthetic packages are copied to `.devlink/` instead. Falls back to `npm install --no-save` for non-synthetic packages not found in the store; synthetic fallbacks use `npm pack` to `.devlink/`.
-- **Staging flow** (`--npm` + store manager): Store is primary — stages packages locally, rewrites internal dependencies to `file:` paths, then runs `npm install`. Packages not found in the store fall back to npm (verified via `npm view`) and are injected as registry dependencies (non-synthetic) or staged via `npm pack` (synthetic).
-- **Registry flow** (`--npm` + npm manager): npm is primary — verifies each package via `npm view`. Non-synthetic packages found in npm are injected as exact versions; not found → fallback to store (mode namespaces) and staged via `file:` protocol. Synthetic packages use `npm pack` primary → store copy fallback.
+- **No mode** (without `--mode`): Resolves universal packages (`version: "1.0.0"`) with npm as primary and store (global) as fallback. Non-synthetic packages are checked via `npm view` — if found, injected into `package.json`; if not, staged from store via `file:` protocol. Synthetic packages use `npm pack` primary → store global copy fallback. Per-mode packages are skipped.
+- **Store manager** (`manager: "store"`): Store is primary — stages packages locally, rewrites internal dependencies to `file:` paths, then runs `npm install`. Packages not found in the store fall back to npm (verified via `npm view`) and are injected as registry dependencies (non-synthetic) or staged via `npm pack` (synthetic).
+- **npm manager** (`manager: "npm"`): npm is primary — verifies each package via `npm view`. Non-synthetic packages found in npm are injected as exact versions; not found → fallback to store (mode namespaces) and staged via `file:` protocol. Synthetic packages use `npm pack` primary → store copy fallback.
 
-Use `--npm` when your DevLink packages have internal dependencies on each other, or when using a remote registry.
+All flows stage packages to `.devlink/`, inject `file:` protocols into `package.json`, and run `npm install`.
 
 ## Version Formats
 
@@ -47,12 +46,11 @@ Package versions support two formats:
 
 ## Package Removal
 
-Packages without a version for the current mode are removed from `package.json` during `--npm` installs. This enables mode-specific package sets.
+Packages without a version for the current mode are removed from `package.json` during install. This enables mode-specific package sets.
 
 ## Linked Packages
 
 Packages with a `link` attribute bypass all resolution and are resolved via `npm link` after install. They are not staged, not injected into `package.json`, and not copied from the store. This works in all install flows.
-
 ## Configuration
 
 Projects use `devlink.config.mjs` to define:
@@ -63,4 +61,4 @@ Projects use `devlink.config.mjs` to define:
 - Mode factories (top-level properties like `dev`, `remote`)
 - Mode detection logic (`detectMode`)
 - Namespace precedence (for store manager)
-- Lifecycle hooks (beforeAll, afterAll, beforeEach, afterEach)
+- Lifecycle hooks (beforeAll, afterAll)

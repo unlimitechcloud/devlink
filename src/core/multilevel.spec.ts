@@ -100,7 +100,6 @@ describe("Multi-Level Installer", () => {
     const result = await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: true,
     });
 
     expect(result.success).toBe(true);
@@ -108,7 +107,7 @@ describe("Multi-Level Installer", () => {
     expect(result.levels[0].relativePath).toBe(".");
     expect(installPackages).toHaveBeenCalledTimes(1);
     expect(installPackages).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "dev", runNpm: true }),
+      expect.objectContaining({ mode: "dev" }),
     );
   });
 
@@ -120,7 +119,6 @@ describe("Multi-Level Installer", () => {
     await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: true,
     });
 
     const callArgs = vi.mocked(installPackages).mock.calls[0][0] as any;
@@ -144,7 +142,6 @@ describe("Multi-Level Installer", () => {
     const result = await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: true,
     });
 
     expect(result.success).toBe(true);
@@ -167,33 +164,12 @@ describe("Multi-Level Installer", () => {
     const result = await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: true,
     });
 
     expect(result.success).toBe(true);
     // root + isolated
     expect(result.levels).toHaveLength(2);
     expect(result.levels[1].relativePath).toContain("app");
-  });
-
-  it("skips isolated packages when runNpm is false", async () => {
-    const isoPath = path.join(tmpDir, "packages", "apps", "web", "packages", "app");
-    await ensureDirs(tmpDir, isoPath);
-
-    const tree = makeTree({
-      isolatedPackages: [isoPath],
-    });
-
-    const result = await installMultiLevel({
-      tree,
-      mode: "dev",
-      runNpm: false,
-    });
-
-    expect(result.success).toBe(true);
-    // root + isolated (isolated has duration 0 since npm skipped)
-    expect(result.levels).toHaveLength(2);
-    expect(result.levels[1].duration).toBe(0);
   });
 
   // =========================================================================
@@ -210,7 +186,6 @@ describe("Multi-Level Installer", () => {
     const result = await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: true,
     });
 
     expect(result.success).toBe(true);
@@ -237,7 +212,6 @@ describe("Multi-Level Installer", () => {
     const result = await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: true,
     });
 
     expect(result.success).toBe(false);
@@ -257,7 +231,6 @@ describe("Multi-Level Installer", () => {
     await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: false,
     });
 
     expect(process.cwd()).toBe(originalCwd);
@@ -273,7 +246,6 @@ describe("Multi-Level Installer", () => {
     await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: true,
     });
 
     expect(process.cwd()).toBe(originalCwd);
@@ -290,7 +262,6 @@ describe("Multi-Level Installer", () => {
     await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: true,
       configName: "webforgeai.config.mjs",
     });
 
@@ -310,7 +281,6 @@ describe("Multi-Level Installer", () => {
     const result = await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: false,
     });
 
     expect(result.totalDuration).toBeGreaterThanOrEqual(0);
@@ -327,13 +297,12 @@ describe("Multi-Level Installer", () => {
 
     const result = await installMultiLevel({
       tree,
-      runNpm: true,
     });
 
     expect(result.success).toBe(true);
     expect(installPackages).toHaveBeenCalledTimes(1);
     expect(installPackages).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: undefined, runNpm: true }),
+      expect.objectContaining({ mode: undefined }),
     );
   });
 
@@ -347,31 +316,12 @@ describe("Multi-Level Installer", () => {
 
     const result = await installMultiLevel({
       tree,
-      runNpm: true,
     });
 
     expect(result.success).toBe(true);
     expect(result.levels).toHaveLength(2);
     expect(result.levels[0].relativePath).toBe(".");
     expect(result.levels[1].relativePath).toContain("iso");
-  });
-
-  it("skips isolated npm when runNpm is false and mode is omitted", async () => {
-    const isoPath = path.join(tmpDir, "packages", "iso");
-    await ensureDirs(tmpDir, isoPath);
-
-    const tree = makeTree({
-      isolatedPackages: [isoPath],
-    });
-
-    const result = await installMultiLevel({
-      tree,
-      runNpm: false,
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.levels).toHaveLength(2);
-    expect(result.levels[1].duration).toBe(0);
   });
 
   // =========================================================================
@@ -391,7 +341,6 @@ describe("Multi-Level Installer", () => {
 
     const result = await installMultiLevel({
       tree,
-      runNpm: true,
     });
 
     expect(result.success).toBe(false);
@@ -417,7 +366,6 @@ describe("Multi-Level Installer", () => {
 
     const result = await installMultiLevel({
       tree,
-      runNpm: true,
     });
 
     expect(result.success).toBe(false);
@@ -443,7 +391,6 @@ describe("Multi-Level Installer", () => {
 
     const result = await installMultiLevel({
       tree,
-      runNpm: true,
     });
 
     expect(result.success).toBe(false);
@@ -472,7 +419,6 @@ describe("Multi-Level Installer", () => {
 
     const result = await installMultiLevel({
       tree,
-      runNpm: true,
     });
 
     expect(result.success).toBe(false);
@@ -497,7 +443,6 @@ describe("Multi-Level Installer", () => {
 
     const result = await installMultiLevel({
       tree,
-      runNpm: true,
     });
 
     expect(result.success).toBe(true);
@@ -505,9 +450,9 @@ describe("Multi-Level Installer", () => {
   });
 
   // =========================================================================
-  // Exit code propagation — npmExitCode undefined (no --npm) is not failure
+  // Exit code propagation — npmExitCode undefined is not failure
   // =========================================================================
-  it("returns success=true when npmExitCode is undefined (no --npm flag)", async () => {
+  it("returns success=true when npmExitCode is undefined", async () => {
     await ensureDirs(tmpDir);
 
     vi.mocked(installPackages).mockResolvedValueOnce({
@@ -521,7 +466,6 @@ describe("Multi-Level Installer", () => {
     const result = await installMultiLevel({
       tree,
       mode: "dev",
-      runNpm: false,
     });
 
     expect(result.success).toBe(true);
