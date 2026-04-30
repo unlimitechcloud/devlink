@@ -694,7 +694,7 @@ export async function installPackages(options: InstallOptions = {}): Promise<Ins
     });
   }
   
-  if (resolvedPackages.length === 0 && registryPackages.length === 0 && removePackageNames.length === 0) {
+  if (resolvedPackages.length === 0 && registryPackages.length === 0 && removePackageNames.length === 0 && linkPackagesForMode.length === 0) {
     result.npmExitCode = await runNpmInstall(options.npmIgnoreScripts);
     return result;
   }
