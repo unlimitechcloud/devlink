@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-04-30
+
+### Fixed
+- Early return in install command skipped npm link phase when all packages in the config had the `link` attribute. Projects with only linked packages (no store/npm resolution needed) would silently skip the linking step.
+
 ## [2.6.0] - 2026-03-18
 
 ### Added
