@@ -415,9 +415,47 @@ program
       const { scanTree } = await import("./core/tree.js");
       const router = createOutputRouter(false);
 
-      router.human(`📂 Scanning monorepo...`);
       const tree = await scanTree(process.cwd());
-      router.human(`  Found ${tree.installLevels.length} install levels, ${tree.isolatedPackages.length} isolated package(s)`);
+
+      // Print tree structure with install levels and coverage
+      router.human(``);
+      for (let i = 0; i < tree.installLevels.length; i++) {
+        const level = tree.installLevels[i];
+        const isRoot = level.relativePath === ".";
+        const icon = isRoot ? "📦" : "📂";
+        const label = isRoot ? ". (root)" : level.relativePath;
+
+        router.human(`  ${icon} ${label}`);
+        if (level.workspaces.length > 0) {
+          router.human(`     Workspaces: ${level.workspaces.join(", ")}`);
+        }
+
+        // Find modules covered by this level
+        if (isRoot) {
+          const covered = tree.modules.filter(m => !m.isIsolated).map(m => m.name);
+          if (covered.length > 0) {
+            router.human(`     Covers: ${covered.join(", ")}`);
+          }
+        } else {
+          const parentMod = tree.modules.find(m => m.path === level.path);
+          if (parentMod && parentMod.children.length > 0) {
+            const covered = parentMod.children.filter(c => !c.isIsolated).map(c => c.name);
+            if (covered.length > 0) {
+              router.human(`     Covers: ${covered.join(", ")}`);
+            }
+          }
+        }
+        router.human(``);
+      }
+
+      if (tree.isolatedPackages.length > 0) {
+        router.human(`  🔌 Isolated packages:`);
+        for (const isoPath of tree.isolatedPackages) {
+          const rel = isoPath.replace(tree.root + "/", "");
+          router.human(`     - ${rel}`);
+        }
+        router.human(``);
+      }
 
       try {
         const result = await executeInstallRecursive(tree, {
@@ -434,24 +472,28 @@ program
 
         for (const level of result.levels) {
           const status = level.success ? "✓" : "✗";
-          router.human(`\n── ${level.relativePath} ${status} ──`);
+          const isRoot = level.relativePath === ".";
+          const icon = isRoot ? "📦" : "📂";
+          router.human(`  ${icon} ${level.relativePath} ${status}`);
           if (level.error) {
-            router.human(`  Error: ${level.error}`);
+            router.human(`     Error: ${level.error}`);
           }
         }
 
         for (const iso of result.isolatedPackages) {
           const status = iso.success ? "✓" : "✗";
-          router.human(`\n── Isolated: ${iso.relativePath} ${status} ──`);
+          router.human(`  🔌 ${iso.relativePath} ${status}`);
           if (iso.error) {
-            router.human(`  Error: ${iso.error}`);
+            router.human(`     Error: ${iso.error}`);
           }
         }
 
+        const totalLevels = result.levels.length;
+        const totalIsolated = result.isolatedPackages.length;
         if (result.success) {
-          router.human(`\n✅ Recursive install complete`);
+          router.human(`\n  ✓ Dependencies installed (${totalLevels} level(s), ${totalIsolated} isolated)`);
         } else {
-          router.human(`\n✗ Recursive install completed with errors`);
+          router.human(`\n  ✗ Dependencies failed`);
           process.exit(1);
         }
       } catch (error: any) {
