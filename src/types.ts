@@ -166,11 +166,26 @@ export type ModeFactory = (ctx: FactoryContext) => ModeConfig;
  * Configuración completa del archivo devlink.config.mjs
  * 
  * Mode factories are defined as top-level properties (e.g. dev, remote, prod).
- * Mode factories are defined as top-level properties (e.g. dev, remote, prod).
  */
 export interface DevLinkConfig {
   packages: Record<string, PackageSpecNew>;
   [key: string]: any;
+}
+
+/**
+ * DevLinkConfigV2 — Config format with structured `modes` object.
+ *
+ * The `modes` object contains a reserved `default` key (string referencing
+ * another mode key) and mode factories as the remaining entries.
+ * This enables `dev-link install` without an explicit `--mode` flag.
+ */
+export interface DevLinkConfigV2 {
+  modes: {
+    /** Reserved: alias to the default mode name */
+    default: string;
+    [modeName: string]: ModeFactory | string;
+  };
+  packages: Record<string, PackageSpecNew>;
 }
 
 // ============================================================================

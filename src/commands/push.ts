@@ -16,6 +16,7 @@ import {
 import { ensureNamespace, writePackageSignature } from "../core/store.js";
 import { getPackagePath, DEFAULT_NAMESPACE, LOCKFILE_NAME } from "../constants.js";
 import { publishPackage } from "./publish.js";
+import { createOutputRouter } from "../pipeline/output-router.js";
 
 /**
  * Read lockfile from project
@@ -171,33 +172,54 @@ export async function pushPackage(
 export async function handlePush(args: {
   namespace?: string;
   cwd?: string;
+  json?: boolean;
 }): Promise<void> {
+  const router = createOutputRouter(!!args.json);
   const workingDir = args.cwd || process.cwd();
   const namespace = args.namespace || DEFAULT_NAMESPACE;
   
-  console.log(`🚀 Pushing from ${workingDir} to namespace '${namespace}'...`);
+  router.human(`🚀 Pushing from ${workingDir} to namespace '${namespace}'...`);
   
   try {
     const result = await pushPackage(workingDir, namespace);
-    console.log(`✓ Published ${result.name}@${result.version}`);
-    console.log(`  Namespace: ${result.namespace}`);
-    console.log(`  Signature: ${result.signature.slice(0, 8)}`);
-    
-    if (result.updatedProjects.length > 0) {
-      console.log(`\n📦 Updated ${result.updatedProjects.length} project(s):`);
-      for (const project of result.updatedProjects) {
-        console.log(`  ✓ ${project}`);
+
+    if (args.json) {
+      router.json({
+        published: {
+          name: result.name,
+          version: result.version,
+          namespace: result.namespace,
+          signature: result.signature,
+          path: result.path,
+          files: result.files,
+        },
+        consumersUpdated: result.updatedProjects,
+      });
+    } else {
+      router.human(`✓ Published ${result.name}@${result.version}`);
+      router.human(`  Namespace: ${result.namespace}`);
+      router.human(`  Signature: ${result.signature.slice(0, 8)}`);
+      
+      if (result.updatedProjects.length > 0) {
+        router.human(`\n📦 Updated ${result.updatedProjects.length} project(s):`);
+        for (const project of result.updatedProjects) {
+          router.human(`  ✓ ${project}`);
+        }
       }
-    }
-    
-    if (result.skippedProjects.length > 0) {
-      console.log(`\n⚠️  Skipped ${result.skippedProjects.length} project(s):`);
-      for (const project of result.skippedProjects) {
-        console.log(`  - ${project}`);
+      
+      if (result.skippedProjects.length > 0) {
+        router.human(`\n⚠️  Skipped ${result.skippedProjects.length} project(s):`);
+        for (const project of result.skippedProjects) {
+          router.human(`  - ${project}`);
+        }
       }
     }
   } catch (error: any) {
-    console.error(`✗ Push failed: ${error.message}`);
+    if (args.json) {
+      process.stdout.write(JSON.stringify({ error: error.message }) + "\n");
+    } else {
+      console.error(`✗ Push failed: ${error.message}`);
+    }
     process.exit(1);
   }
 }

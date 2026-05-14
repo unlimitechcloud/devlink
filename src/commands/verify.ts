@@ -22,6 +22,7 @@ import {
   deletePackageVersion,
 } from "../core/store.js";
 import type { VersionEntry } from "../types.js";
+import { createOutputRouter } from "../pipeline/output-router.js";
 
 export interface VerifyResult {
   orphansInRegistry: { namespace: string; package: string; version: string }[];
@@ -119,51 +120,86 @@ export async function verifyStore(fix: boolean = false): Promise<VerifyResult> {
 /**
  * CLI handler for verify command
  */
-export async function handleVerify(args: { fix?: boolean }): Promise<void> {
+export async function handleVerify(args: { fix?: boolean; json?: boolean }): Promise<void> {
+  const router = createOutputRouter(!!args.json);
+
   try {
-    console.log("🔍 Verifying store integrity...\n");
+    router.human("🔍 Verifying store integrity...\n");
     
     const result = await verifyStore(args.fix);
-    
-    let hasIssues = false;
-    
-    if (result.orphansInRegistry.length > 0) {
-      hasIssues = true;
-      console.log(`⚠️  Registry entries without files (${result.orphansInRegistry.length}):`);
+
+    if (args.json) {
+      const issues: { type: string; namespace: string; package: string; version: string }[] = [];
+
       for (const o of result.orphansInRegistry) {
-        console.log(`  - ${o.namespace}/${o.package}@${o.version}`);
+        issues.push({ type: "orphan-registry", namespace: o.namespace, package: o.package, version: o.version });
       }
-      console.log();
-    }
-    
-    if (result.orphansOnDisk.length > 0) {
-      hasIssues = true;
-      console.log(`⚠️  Files without registry entries (${result.orphansOnDisk.length}):`);
       for (const o of result.orphansOnDisk) {
-        console.log(`  - ${o.namespace}/${o.package}@${o.version}`);
+        issues.push({ type: "orphan-disk", namespace: o.namespace, package: o.package, version: o.version });
       }
-      console.log();
-    }
-    
-    if (result.signatureMismatches.length > 0) {
-      hasIssues = true;
-      console.log(`⚠️  Signature mismatches (${result.signatureMismatches.length}):`);
       for (const o of result.signatureMismatches) {
-        console.log(`  - ${o.namespace}/${o.package}@${o.version}`);
+        issues.push({ type: "signature-mismatch", namespace: o.namespace, package: o.package, version: o.version });
       }
-      console.log();
-    }
-    
-    if (result.fixed) {
-      console.log("✓ Issues fixed");
-    } else if (hasIssues && !args.fix) {
-      console.log("Run with --fix to repair issues");
-      process.exit(5);
-    } else if (!hasIssues) {
-      console.log("✓ Store is healthy");
+
+      const jsonOutput: any = {
+        valid: issues.length === 0,
+        issues,
+      };
+
+      if (result.fixed) {
+        jsonOutput.fixed = issues;
+      }
+
+      router.json(jsonOutput);
+
+      if (issues.length > 0 && !args.fix) {
+        process.exit(5);
+      }
+    } else {
+      let hasIssues = false;
+      
+      if (result.orphansInRegistry.length > 0) {
+        hasIssues = true;
+        router.human(`⚠️  Registry entries without files (${result.orphansInRegistry.length}):`);
+        for (const o of result.orphansInRegistry) {
+          router.human(`  - ${o.namespace}/${o.package}@${o.version}`);
+        }
+        router.human("");
+      }
+      
+      if (result.orphansOnDisk.length > 0) {
+        hasIssues = true;
+        router.human(`⚠️  Files without registry entries (${result.orphansOnDisk.length}):`);
+        for (const o of result.orphansOnDisk) {
+          router.human(`  - ${o.namespace}/${o.package}@${o.version}`);
+        }
+        router.human("");
+      }
+      
+      if (result.signatureMismatches.length > 0) {
+        hasIssues = true;
+        router.human(`⚠️  Signature mismatches (${result.signatureMismatches.length}):`);
+        for (const o of result.signatureMismatches) {
+          router.human(`  - ${o.namespace}/${o.package}@${o.version}`);
+        }
+        router.human("");
+      }
+      
+      if (result.fixed) {
+        router.human("✓ Issues fixed");
+      } else if (hasIssues && !args.fix) {
+        router.human("Run with --fix to repair issues");
+        process.exit(5);
+      } else if (!hasIssues) {
+        router.human("✓ Store is healthy");
+      }
     }
   } catch (error: any) {
-    console.error(`✗ Verify failed: ${error.message}`);
+    if (args.json) {
+      process.stdout.write(JSON.stringify({ error: error.message }) + "\n");
+    } else {
+      console.error(`✗ Verify failed: ${error.message}`);
+    }
     process.exit(1);
   }
 }

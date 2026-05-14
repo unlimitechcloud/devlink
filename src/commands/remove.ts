@@ -19,6 +19,7 @@ import {
 } from "../core/store.js";
 import { parsePackageSpec } from "../core/resolver.js";
 import { DEFAULT_NAMESPACE } from "../constants.js";
+import { createOutputRouter } from "../pipeline/output-router.js";
 
 export interface RemoveOptions {
   namespace?: string;
@@ -99,25 +100,56 @@ export async function removeFromStore(
 export async function handleRemove(args: {
   target: string;
   namespace?: string;
+  json?: boolean;
 }): Promise<void> {
+  const router = createOutputRouter(!!args.json);
+
   try {
+    // Read registry before removal to compute remaining versions
+    const registryBefore = await readRegistry();
     const result = await removeFromStore(args.target, {
       namespace: args.namespace,
     });
-    
-    switch (result.type) {
-      case "namespace":
-        console.log(`✓ Removed namespace '${result.name}'`);
-        break;
-      case "package":
-        console.log(`✓ Removed package '${result.name}' from namespace '${result.namespace}'`);
-        break;
-      case "version":
-        console.log(`✓ Removed ${result.name}@${result.version} from namespace '${result.namespace}'`);
-        break;
+
+    if (args.json) {
+      // Compute remaining versions for the package after removal
+      let remainingVersions = 0;
+      if (result.type === "version" && result.namespace) {
+        const pkgEntry = getPackageFromRegistry(registryBefore, result.namespace, result.name);
+        if (pkgEntry) {
+          // Subtract 1 for the version we just removed
+          remainingVersions = Object.keys(pkgEntry.versions).length - 1;
+        }
+      }
+
+      router.json({
+        target: args.target,
+        removed: [{
+          name: result.name,
+          version: result.version || "*",
+          namespace: result.namespace || result.name,
+        }],
+        remainingVersions,
+      });
+    } else {
+      switch (result.type) {
+        case "namespace":
+          router.human(`✓ Removed namespace '${result.name}'`);
+          break;
+        case "package":
+          router.human(`✓ Removed package '${result.name}' from namespace '${result.namespace}'`);
+          break;
+        case "version":
+          router.human(`✓ Removed ${result.name}@${result.version} from namespace '${result.namespace}'`);
+          break;
+      }
     }
   } catch (error: any) {
-    console.error(`✗ Remove failed: ${error.message}`);
+    if (args.json) {
+      process.stdout.write(JSON.stringify({ error: error.message }) + "\n");
+    } else {
+      console.error(`✗ Remove failed: ${error.message}`);
+    }
     process.exit(1);
   }
 }

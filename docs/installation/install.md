@@ -14,36 +14,34 @@ When `packages` are specified, only those packages are resolved/staged — all o
 
 | Option | Description |
 |--------|-------------|
-| `-m, --mode <name>` | Set install mode (e.g. `dev`, `remote`). When omitted, installs universal packages only |
+| `-m, --mode <name>` | Set install mode (e.g. `dev`, `remote`). When omitted, uses `modes.default` or universal packages only |
 | `-n, --namespaces <list>` | Override namespace precedence (comma-separated) |
 | `-c, --config <path>` | Path to config file |
 | `--config-name <filename>` | Config file name to search for (e.g. `webforgeai.config.mjs`) |
 | `--config-key <key>` | Key within the config export to extract DevLink config from (e.g. `devlink`) |
 | `--npm-ignore-scripts` | Propagate `--ignore-scripts` to `npm install` |
+| `--json` | Output structured JSON with recursive trace to stdout |
 | `-r, --recursive` | Install recursively across all monorepo levels |
 | `--repo <path>` | Use custom repo path |
 
 ## Description
 
-The `install` command:
+The `install` command orchestrates the full pipeline: `plan → stage → apply` (where `apply = inject → hydrate` and `hydrate = npm-install → link`).
 
-1. Reads `devlink.config.mjs` from the project (if available)
-2. Determines the mode (via `--mode` or `detectMode`)
-3. Resolves packages using namespace precedence (store manager) or injects them for registry resolution (npm manager)
-4. Removes packages that don't have a version for the current mode
-5. Stages packages to `.devlink/` and injects `file:` protocols into `package.json`
-6. Runs `npm install`
-7. Cleans broken bin symlinks and links new bin entries into `node_modules/.bin/`
-8. Registers the project as a consumer
-9. Creates/updates `devlink.lock`
+Steps:
 
-When `--mode` is omitted, the command:
-- Loads the config file (if available)
-- Resolves packages with universal versions (`version: "1.0.0"`) — these are injected into `package.json` for npm to resolve
-- Skips packages with per-mode versions (since no mode is active)
-- Runs `npm install`
+1. **Plan** — Reads config, resolves mode, classifies packages into buckets (store, registry, link, remove, skipped)
+2. **Stage** — Copies store packages to `.devlink/`, rewrites internal dependencies to `file:` paths
+3. **Inject** — Rewrites `package.json` with `file:` protocols for staged packages and version strings for registry packages
+4. **npm-install** — Runs `npm install --no-audit --legacy-peer-deps`
+5. **Link** — Runs `npm link` for packages with local path references
 
-This means universal packages are always resolved regardless of mode, while per-mode packages require an explicit mode to be installed.
+Additional post-install steps:
+- Cleans broken bin symlinks and links new bin entries into `node_modules/.bin/`
+- Registers the project as a consumer
+- Creates/updates `devlink.lock`
+
+When `--mode` is omitted, the command uses `modes.default` from config (if defined), or `detectMode()`, or falls back to universal packages only.
 
 ## Configuration File
 
@@ -136,6 +134,12 @@ dev-link install --mode remote
 
 # Skip npm lifecycle scripts
 dev-link install --mode dev --npm-ignore-scripts
+
+# JSON output with full trace
+dev-link install --mode dev --json
+
+# Recursive across monorepo with JSON
+dev-link install --mode dev --recursive --json
 ```
 
 ## Mode System
@@ -484,8 +488,73 @@ dev: (ctx) => ({
 | `beforeAll` | `() => void` | Before any package is installed |
 | `afterAll` | `() => void` | After all packages are installed |
 
+## JSON Output and Pipeline Architecture
+
+With `--json`, the install command produces structured output with a recursive trace of all pipeline steps:
+
+```json
+{
+  "projectPath": "/home/user/my-project",
+  "success": true,
+  "trace": {
+    "plan": {
+      "version": "1",
+      "mode": "dev",
+      "manager": "store",
+      "namespaces": ["global"],
+      "projectPath": "/home/user/my-project",
+      "packages": {
+        "store": [{ "name": "@scope/core", "version": "1.0.0", "namespace": "global", "path": "..." }],
+        "registry": [],
+        "link": [],
+        "remove": [],
+        "skipped": []
+      }
+    },
+    "stage": {
+      "projectPath": "/home/user/my-project",
+      "stagingDir": ".devlink",
+      "staged": [{ "name": "@scope/core", "version": "1.0.0", "path": ".devlink/@scope/core" }],
+      "relinked": []
+    },
+    "apply": {
+      "projectPath": "/home/user/my-project",
+      "success": true,
+      "trace": {
+        "inject": { "..." : "..." },
+        "hydrate": {
+          "success": true,
+          "trace": {
+            "npm-install": { "exitCode": 0, "args": ["install", "--no-audit", "--legacy-peer-deps"] },
+            "link": { "linked": [], "failed": [] }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+The trace is recursive — composite commands (apply, hydrate) nest their own sub-command traces.
+
+### Pipeline Decomposition
+
+The install pipeline can be executed as individual commands for debugging or external tool integration:
+
+```bash
+# Equivalent to: dev-link install --mode dev --json
+dev-link plan --mode dev --json > plan.json
+dev-link stage --plan plan.json --json > stage.json
+dev-link apply --stage stage.json --plan plan.json --json
+```
+
+See [Plan](plan.md), [Stage](stage.md), [Apply](apply.md) for individual command docs.
+
 ## See Also
 
 - [Configuration](configuration.md) - Full config file reference
+- [Plan Command](plan.md) - First pipeline step
+- [Stage Command](stage.md) - Second pipeline step
+- [Apply Command](apply.md) - Third pipeline step (inject → hydrate)
 - [Namespaces](../store/namespaces.md) - Understanding namespace precedence
 - [Push Command](../publishing/push.md) - How push updates consumers

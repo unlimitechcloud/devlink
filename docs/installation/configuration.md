@@ -8,6 +8,19 @@ Create `devlink.config.mjs` in your project root:
 
 ```javascript
 export default {
+  modes: {
+    default: "dev",
+    dev: () => ({ manager: "store", namespaces: ["global"] }),
+    remote: () => ({ manager: "npm" }),
+  },
+  packages: { /* ... */ },
+};
+```
+
+The legacy top-level format is also supported:
+
+```javascript
+export default {
   packages: { /* ... */ },
   dev: () => ({ /* ... */ }),
   remote: () => ({ /* ... */ }),
@@ -105,9 +118,36 @@ packages: {
 
 If a package doesn't have a version for the current mode, it will be removed from `package.json` during install, or skipped if no mode is active.
 
-### Mode Factories
+### modes (Recommended)
 
-Modes are defined as top-level properties in the config. Each mode is a factory function that returns a `ModeConfig` object. You can define any number of modes with any name.
+The `modes` object is the recommended way to define modes. It groups all mode factories under a single key and supports a `default` key to eliminate the need for `--mode` on every invocation.
+
+```javascript
+export default {
+  modes: {
+    default: "dev",
+    dev: (ctx) => ({
+      manager: "store",
+      namespaces: ["global"],
+    }),
+    remote: (ctx) => ({
+      manager: "npm",
+    }),
+  },
+  packages: { /* ... */ },
+};
+```
+
+The `default` key must be a string referencing an existing mode name. When `--mode` is omitted, DevLink resolves the default mode from this key instead of falling back to universal-only behavior.
+
+Rules:
+- `modes.default` must reference a valid mode key in the same object
+- Each non-`default` entry must be a function (mode factory)
+- `detectMode` still works alongside `modes` — CLI flag > `detectMode` > `modes.default`
+
+### Mode Factories (Legacy Format)
+
+Modes can also be defined as top-level properties in the config. This format is still supported for backward compatibility.
 
 ```javascript
 // Development mode — uses local DevLink store
@@ -122,7 +162,7 @@ remote: (ctx) => ({
 }),
 ```
 
-Reserved property names (cannot be used as mode names): `packages`, `detectMode`.
+Reserved property names (cannot be used as mode names): `packages`, `detectMode`, `modes`.
 
 ### detectMode
 
@@ -183,6 +223,22 @@ Packages are resolved by npm from the configured registry. DevLink verifies each
 
 ```javascript
 export default {
+  // Mode definitions (recommended format)
+  modes: {
+    default: "dev",
+
+    // Development mode: use local store
+    dev: (ctx) => ({
+      manager: "store",
+      namespaces: ["global"],
+    }),
+
+    // Remote mode: use npm registry (GitHub Packages, etc.)
+    remote: (ctx) => ({
+      manager: "npm",
+    }),
+  },
+
   // Packages to manage
   packages: {
     // Universal version — resolved in all modes
@@ -203,18 +259,7 @@ export default {
     "@myorg/local-sdk": { version: "1.0.0", link: "../sdk" },
   },
 
-  // Development mode: use local store
-  dev: () => ({
-    manager: "store",
-    namespaces: ["global"],
-  }),
-
-  // Remote mode: use npm registry (GitHub Packages, etc.)
-  remote: () => ({
-    manager: "npm",
-  }),
-
-  // Mode detection
+  // Mode detection (optional — modes.default is used if this is absent)
   detectMode: (ctx) => {
     if (ctx.env.SST_LOCAL === "true") return "dev";
     if (ctx.env.NODE_ENV === "development") return "dev";
@@ -223,13 +268,40 @@ export default {
 };
 ```
 
+### Legacy Format (Still Supported)
+
+The top-level mode factory format continues to work:
+
+```javascript
+export default {
+  packages: { /* ... */ },
+
+  dev: () => ({
+    manager: "store",
+    namespaces: ["global"],
+  }),
+
+  remote: () => ({
+    manager: "npm",
+  }),
+
+  detectMode: (ctx) => {
+    if (ctx.env.SST_LOCAL === "true") return "dev";
+    return "remote";
+  },
+};
+```
+
+Both formats are equivalent. The `modes` object format is preferred for new projects because `modes.default` eliminates the need for `--mode` or `detectMode` in simple setups.
+
 ## Mode Selection
 
 The mode is determined by (in priority order):
 
 1. `--mode <name>` CLI flag
 2. `detectMode()` function in config
-3. If none specified → no mode (universal packages only)
+3. `modes.default` value in config
+4. If none specified → no mode (universal packages only)
 
 ```bash
 # Explicit mode
@@ -237,7 +309,12 @@ dev-link install --mode remote
 
 # Auto-detect via detectMode()
 dev-link install
+
+# Uses modes.default when no --mode and no detectMode
+dev-link install
 ```
+
+With `modes.default` configured, most projects can simply run `dev-link install` without flags.
 
 ## Namespace Override
 
@@ -315,4 +392,5 @@ packages: {
 ## See Also
 
 - [Install Command](install.md) - Using the configuration
+- [Plan Command](plan.md) - How config is resolved into an installation plan
 - [Namespaces](../store/namespaces.md) - Understanding namespace precedence

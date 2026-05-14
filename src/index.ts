@@ -8,6 +8,7 @@
 // Types
 export type {
   DevLinkConfig,
+  DevLinkConfigV2,
   ModeConfig,
   ModeFactory,
   FactoryContext,
@@ -28,7 +29,7 @@ export type {
 } from "./types.js";
 
 // Config
-export { loadConfig, createContext, normalizeConfig, resolveVersion } from "./config.js";
+export { loadConfig, createContext, normalizeConfig, resolveVersion, resolveMode, hasModesObject, validateModesObject } from "./config.js";
 
 // Core
 export { scanTree, classifyModule } from "./core/tree.js";
@@ -39,3 +40,6 @@ export { resolvePackage } from "./core/resolver.js";
 // Commands
 export { installPackages, handleInstall } from "./commands/install.js";
 export { handleTree } from "./commands/tree.js";
+
+// Pipeline
+export * as pipeline from "./pipeline/index.js";

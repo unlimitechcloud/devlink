@@ -1,11 +1,18 @@
 /**
- * Config - Carga y gestión de configuración
+ * Config — Configuration loading, normalization, and mode resolution.
+ *
+ * Supports two config formats:
+ * - Legacy: mode factories as top-level properties (e.g. `dev`, `remote`)
+ * - V2: structured `modes` object with a reserved `default` key
+ *
+ * The `resolveMode` function handles both formats transparently.
  */
 
 import fs from "fs/promises";
 import path from "path";
 import type {
   DevLinkConfig,
+  DevLinkConfigV2,
   FactoryContext,
   ModeConfig,
   ModeFactory,
@@ -112,8 +119,10 @@ export function resolveVersion(spec: PackageSpecNew, mode: string): string | und
  *
  * Format: { version: { dev: "0.3.0" }, synthetic?: true }
  * Or:     { version: "0.3.0", synthetic?: true }  (universal — all modes)
+ *
+ * Supports both legacy (top-level mode factories) and V2 (modes object) formats.
  */
-export function normalizeConfig(raw: DevLinkConfig): NormalizedConfig {
+export function normalizeConfig(raw: DevLinkConfig | DevLinkConfigV2): NormalizedConfig {
   const packages: Record<string, NormalizedPackageSpec> = {};
 
   for (const [pkgName, spec] of Object.entries(raw.packages)) {
@@ -134,14 +143,135 @@ export function normalizeConfig(raw: DevLinkConfig): NormalizedConfig {
     }
   }
 
-  // Extract mode factories: top-level functions excluding reserved keys
+  // Extract mode factories depending on config format
   const modes: Record<string, ModeFactory> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (key === "packages") continue;
-    if (typeof value === "function") {
-      modes[key] = value as ModeFactory;
+
+  if (hasModesObject(raw)) {
+    // V2 format: extract factories from modes object
+    for (const [key, value] of Object.entries(raw.modes)) {
+      if (key === "default") continue;
+      if (typeof value === "function") {
+        modes[key] = value as ModeFactory;
+      }
+    }
+  } else {
+    // Legacy format: top-level functions excluding reserved keys
+    for (const [key, value] of Object.entries(raw)) {
+      if (key === "packages") continue;
+      if (typeof value === "function") {
+        modes[key] = value as ModeFactory;
+      }
     }
   }
 
   return { packages, modes };
+}
+
+/**
+ * Detects whether a config uses the V2 `modes` object format.
+ *
+ * A config has the V2 format when it contains a `modes` property that is
+ * a non-null object (not an array).
+ */
+export function hasModesObject(config: DevLinkConfig | DevLinkConfigV2): config is DevLinkConfigV2 {
+  return (
+    "modes" in config &&
+    typeof (config as any).modes === "object" &&
+    (config as any).modes !== null &&
+    !Array.isArray((config as any).modes)
+  );
+}
+
+/**
+ * Validates the `modes` object in a V2 config.
+ *
+ * Checks:
+ * - `modes.default` is a string
+ * - `modes.default` references an existing mode key
+ * - Each non-`default` entry is a callable function (ModeFactory)
+ *
+ * @throws Error with descriptive message if validation fails
+ */
+export function validateModesObject(config: DevLinkConfigV2): void {
+  const { modes } = config;
+
+  // Validate modes.default is a string
+  if (typeof modes.default !== "string" || modes.default.trim() === "") {
+    throw new Error(
+      `"modes.default" must be a non-empty string referencing a mode name`
+    );
+  }
+
+  // Collect available mode names (non-default entries that are functions)
+  const availableModes: string[] = [];
+  for (const [key, value] of Object.entries(modes)) {
+    if (key === "default") continue;
+    if (typeof value !== "function") {
+      throw new Error(
+        `Mode "${key}" must be a function (ModeFactory), got ${typeof value}`
+      );
+    }
+    availableModes.push(key);
+  }
+
+  // Validate modes.default references an existing mode
+  if (!availableModes.includes(modes.default)) {
+    throw new Error(
+      `"modes.default" references "${modes.default}" which does not exist in modes. Available modes: ${availableModes.join(", ")}`
+    );
+  }
+}
+
+/**
+ * Resolves the effective mode name from a config.
+ *
+ * Supports both V2 (modes object) and legacy (top-level factories) formats:
+ * - V2: returns explicitMode if provided, otherwise modes.default
+ * - Legacy: returns explicitMode if provided, otherwise throws (no default available)
+ *
+ * Validates that the resolved mode has a corresponding factory.
+ *
+ * @param config - The raw config (V2 or legacy)
+ * @param explicitMode - Optional explicit mode from --mode flag
+ * @returns The resolved mode name
+ * @throws Error if mode cannot be resolved or doesn't have a factory
+ */
+export function resolveMode(config: DevLinkConfig | DevLinkConfigV2, explicitMode?: string): string {
+  if (hasModesObject(config)) {
+    // V2 format: validate the modes object first
+    validateModesObject(config);
+
+    const resolvedMode = explicitMode ?? config.modes.default;
+
+    // Validate the resolved mode has a factory
+    const factory = config.modes[resolvedMode];
+    if (typeof factory !== "function") {
+      const availableModes = Object.keys(config.modes).filter(
+        (k) => k !== "default" && typeof config.modes[k] === "function"
+      );
+      throw new Error(
+        `Mode "${resolvedMode}" is not defined in modes. Available modes: ${availableModes.join(", ")}`
+      );
+    }
+
+    return resolvedMode;
+  }
+
+  // Legacy format: top-level mode factories
+  if (explicitMode) {
+    // Validate the explicit mode exists as a top-level function
+    if (typeof (config as any)[explicitMode] !== "function") {
+      const availableModes = Object.keys(config)
+        .filter((k) => k !== "packages" && typeof (config as any)[k] === "function");
+      throw new Error(
+        `Mode "${explicitMode}" is not defined in configuration. Available modes: ${availableModes.join(", ")}`
+      );
+    }
+    return explicitMode;
+  }
+
+  // Legacy format without explicit mode: no default available
+  throw new Error(
+    `No --mode flag provided and no "modes.default" configured. Either provide --mode or add a modes object with a default key to your config.`
+  );
 }

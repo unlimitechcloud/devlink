@@ -7,7 +7,69 @@ Commands and configuration for installing packages from the DevLink store or reg
 | Document | Description |
 |----------|-------------|
 | `install.md` | Install command usage, options, modes, flows |
+| `plan.md` | Plan command — resolve config + registry into installation plan |
+| `stage.md` | Stage command — copy packages to `.devlink/`, rewrite internal deps |
+| `inject.md` | Inject command — rewrite `package.json` with file: protocols |
+| `npm-install.md` | npm-install command — execute `npm install` |
+| `link.md` | Link command — execute `npm link` for local packages |
+| `hydrate.md` | Hydrate command — composite: npm-install → link |
+| `apply.md` | Apply command — composite: inject → hydrate |
 | `configuration.md` | `devlink.config.mjs` reference, mode factories, lifecycle hooks |
+
+## Pipeline Architecture
+
+The install command is a composable pipeline of independent commands:
+
+```
+install = plan → stage → apply
+                         apply = inject → hydrate
+                                          hydrate = npm-install → link
+```
+
+Each command:
+- Accepts input from the previous step (via `--plan`/`--stage` file or stdin)
+- Produces structured JSON output (with `--json`)
+- Can be executed independently or as part of the full pipeline
+
+### Atomic Commands
+
+| Command | Responsibility | Mutations |
+|---------|---------------|-----------|
+| `plan` | Resolve config + registry → classify packages | None (read-only) |
+| `stage` | Copy store packages → `.devlink/`, rewrite internal deps | `.devlink/` directory |
+| `inject` | Rewrite `package.json` with file: protocols and versions | `package.json` |
+| `npm-install` | Execute `npm install` | `node_modules/` |
+| `link` | Execute `npm link` for local packages | `node_modules/` symlinks |
+
+### Composite Commands
+
+| Command | Orchestrates | Fail-fast |
+|---------|-------------|-----------|
+| `hydrate` | npm-install → link | If npm-install fails, skip link |
+| `apply` | inject → hydrate | If inject fails, skip hydrate |
+| `install` | plan → stage → apply | If any step fails, stop |
+
+## JSON Flag and Pipeline Interception
+
+All pipeline commands support `--json` for structured output:
+
+- **stdout**: Only valid JSON (the command's result)
+- **stderr**: Progress messages, subprocess output, logs
+- **stdin**: Previous command's JSON output (for piping)
+
+This enables external tools to intercept the pipeline at any point:
+
+```bash
+# External tool intercepts between stage and apply
+dev-link plan --mode dev --json > /tmp/plan.json
+dev-link stage --plan /tmp/plan.json --json > /tmp/stage.json
+
+# Custom logic here (e.g., peer dependency reconciliation)
+my-tool check --stage /tmp/stage.json
+
+# Resume pipeline
+dev-link apply --stage /tmp/stage.json --plan /tmp/plan.json --json
+```
 
 ## Install Modes
 
@@ -16,7 +78,7 @@ DevLink supports dynamic modes defined in the config (e.g. `dev`, `remote`, `sta
 - **store**: Resolves packages from the local DevLink store. Falls back to npm (per-package `npm view` check) if a package is not found in any configured namespace.
 - **npm**: Packages are resolved by npm from a configured registry. Falls back to the local store (mode namespaces) if a package is not found in npm.
 
-When no mode is specified, DevLink uses npm as the primary source with store (global namespace) as fallback.
+When no mode is specified, DevLink uses the `modes.default` value from config, or falls back to universal packages only.
 
 ## Bidirectional Fallback
 
@@ -55,6 +117,7 @@ Packages without a version for the current mode are removed from `package.json` 
 ## Linked Packages
 
 Packages with a `link` attribute bypass all resolution and are resolved via `npm link` after install. They are not staged, not injected into `package.json`, and not copied from the store. This works in all install flows.
+
 ## Configuration
 
 Projects use `devlink.config.mjs` to define:
@@ -62,7 +125,8 @@ Projects use `devlink.config.mjs` to define:
 - Synthetic flag for packages that should be staged to `.devlink/` instead of `package.json`
 - Link attribute for packages resolved via `npm link` instead of store/npm
 - Dev flag for packages that should be injected into `devDependencies` instead of `dependencies`
-- Mode factories (top-level properties like `dev`, `remote`)
+- Mode factories (via `modes` object or top-level properties)
+- Default mode (via `modes.default`)
 - Mode detection logic (`detectMode`)
 - Namespace precedence (for store manager)
 - Lifecycle hooks (beforeAll, afterAll)

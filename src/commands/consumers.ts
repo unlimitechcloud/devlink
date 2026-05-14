@@ -14,6 +14,7 @@ import {
 } from "../core/installations.js";
 import { formatConsumersTree } from "../formatters/tree.js";
 import { formatConsumersFlat } from "../formatters/flat.js";
+import { createOutputRouter } from "../pipeline/output-router.js";
 
 export interface ConsumersOptions {
   package?: string;
@@ -128,12 +129,24 @@ export async function handleConsumers(args: {
   namespace?: string;
   flat?: boolean;
   prune?: boolean;
+  json?: boolean;
 }): Promise<void> {
+  const router = createOutputRouter(!!args.json);
+
   try {
-    const output = await listConsumers(args);
-    console.log(output);
+    if (args.json) {
+      const info = await getConsumersInfo(args);
+      router.json(info);
+    } else {
+      const output = await listConsumers(args);
+      router.human(output);
+    }
   } catch (error: any) {
-    console.error(`✗ Consumers failed: ${error.message}`);
+    if (args.json) {
+      process.stdout.write(JSON.stringify({ error: error.message }) + "\n");
+    } else {
+      console.error(`✗ Consumers failed: ${error.message}`);
+    }
     process.exit(1);
   }
 }

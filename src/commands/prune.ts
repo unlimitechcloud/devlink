@@ -9,6 +9,8 @@ import {
   findOrphanedPackages,
   deletePackageVersion,
 } from "../core/store.js";
+import { getPackagePath } from "../constants.js";
+import { createOutputRouter } from "../pipeline/output-router.js";
 
 export interface PruneOptions {
   namespace?: string;
@@ -75,26 +77,45 @@ export async function pruneStore(options: PruneOptions = {}): Promise<PruneResul
 export async function handlePrune(args: {
   namespace?: string;
   dryRun?: boolean;
+  json?: boolean;
 }): Promise<void> {
+  const router = createOutputRouter(!!args.json);
+
   try {
     const result = await pruneStore(args);
-    
-    if (result.removed.length === 0) {
-      console.log("✓ No orphaned packages found");
-      return;
-    }
-    
-    if (result.dryRun) {
-      console.log(`🔍 Would remove ${result.removed.length} orphaned package(s):`);
+
+    if (args.json) {
+      router.json({
+        pruned: result.removed.map(r => ({
+          namespace: r.namespace,
+          name: r.package,
+          version: r.version,
+          path: getPackagePath(r.namespace, r.package, r.version),
+        })),
+        dryRun: result.dryRun,
+      });
     } else {
-      console.log(`🧹 Removed ${result.removed.length} orphaned package(s):`);
-    }
-    
-    for (const r of result.removed) {
-      console.log(`  - ${r.namespace}/${r.package}@${r.version}`);
+      if (result.removed.length === 0) {
+        router.human("✓ No orphaned packages found");
+        return;
+      }
+      
+      if (result.dryRun) {
+        router.human(`🔍 Would remove ${result.removed.length} orphaned package(s):`);
+      } else {
+        router.human(`🧹 Removed ${result.removed.length} orphaned package(s):`);
+      }
+      
+      for (const r of result.removed) {
+        router.human(`  - ${r.namespace}/${r.package}@${r.version}`);
+      }
     }
   } catch (error: any) {
-    console.error(`✗ Prune failed: ${error.message}`);
+    if (args.json) {
+      process.stdout.write(JSON.stringify({ error: error.message }) + "\n");
+    } else {
+      console.error(`✗ Prune failed: ${error.message}`);
+    }
     process.exit(1);
   }
 }

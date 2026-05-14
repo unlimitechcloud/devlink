@@ -14,14 +14,52 @@ Binary: `dev-link`
 |---------|---------|------|
 | `publish` | Publish package to store | `docs publishing/publish.md` |
 | `push` | Publish and update all consumers | `docs publishing/push.md` |
-| `install` | Install packages from store | `docs installation/install.md` |
+| `install` | Install packages from store (full pipeline) | `docs installation/install.md` |
+| `plan` | Resolve config → installation plan | `docs installation/plan.md` |
+| `stage` | Copy packages to `.devlink/` | `docs installation/stage.md` |
+| `apply` | Inject + hydrate (composite) | `docs installation/apply.md` |
+| `inject` | Rewrite package.json | `docs installation/inject.md` |
+| `hydrate` | npm-install + link (composite) | `docs installation/hydrate.md` |
+| `npm-install` | Run npm install | `docs installation/npm-install.md` |
+| `link` | Run npm link for local packages | `docs installation/link.md` |
 | `list` | List packages in store | `docs inspection/list.md` |
 | `resolve` | Debug package resolution | `docs inspection/resolve.md` |
 | `consumers` | List consumer projects | `docs inspection/consumers.md` |
+| `tree` | Display monorepo structure | `docs inspection/tree.md` |
 | `remove` | Remove packages/namespaces | `docs maintenance/remove.md` |
 | `verify` | Verify store integrity | `docs maintenance/verify.md` |
 | `prune` | Remove orphaned packages | `docs maintenance/prune.md` |
 | `docs` | Browse embedded documentation | — |
+
+## Pipeline Commands
+
+The `install` command is decomposed into a composable pipeline of independent commands:
+
+```
+install = plan → stage → apply
+                         apply = inject → hydrate
+                                          hydrate = npm-install → link
+```
+
+Each pipeline command:
+- Produces structured JSON output with `--json`
+- Accepts input from the previous step (via file path or stdin)
+- Can be executed independently or as part of the full pipeline
+
+This enables external tools to intercept the pipeline at any point and inject custom logic between steps:
+
+```bash
+# Full pipeline via shell composition
+dev-link plan --mode dev --json | dev-link stage --json | dev-link apply --json
+
+# Intercept between stage and apply
+dev-link plan --mode dev --json > /tmp/plan.json
+dev-link stage --plan /tmp/plan.json --json > /tmp/stage.json
+# ... custom logic here ...
+dev-link apply --stage /tmp/stage.json --plan /tmp/plan.json --json
+```
+
+See `docs installation/AGENTS.md` for full pipeline architecture details.
 
 ## Global Options
 
@@ -41,6 +79,7 @@ Environment: `DEVLINK_REPO` can be used instead of `--repo`.
 - **Installations**: `installations.json` tracks which projects consume which packages
 - **Synthetic packages**: Packages marked `synthetic: true` are staged to `.devlink/` instead of `package.json` — useful for tooling and build-time dependencies
 - **File Locking**: Write operations acquire exclusive locks to prevent corruption
+- **Pipeline**: Install is decomposed into plan → stage → apply, each producing JSON for composability
 
 For details on store internals, see `docs store/`.
 
@@ -52,8 +91,8 @@ This documentation follows a specialization hierarchy:
 docs/AGENTS.md (this file)       → Overview, commands, concepts
 docs/store/AGENTS.md             → Store internals: structure, namespaces, locking
 docs/publishing/AGENTS.md        → Publishing: publish, push
-docs/installation/AGENTS.md      → Installation: install, configuration
-docs/inspection/AGENTS.md        → Inspection: list, resolve, consumers
+docs/installation/AGENTS.md      → Installation: install, pipeline commands, configuration
+docs/inspection/AGENTS.md        → Inspection: list, resolve, consumers, tree
 docs/maintenance/AGENTS.md       → Maintenance: remove, verify, prune
 ```
 
@@ -74,8 +113,24 @@ dev-link push                 # Publish + update all consumers
 ```bash
 dev-link install --mode dev     # Install from store using devlink.config.mjs
 dev-link install --mode remote  # Install from npm registry
-dev-link install                # Universal packages only (no mode)
+dev-link install                # Uses modes.default or universal packages only
 dev-link install @scope/core --mode dev  # Install only specific package(s)
+```
+
+### Pipeline Composition (External Tools)
+
+```bash
+# Plan only — inspect what would be installed
+dev-link plan --mode dev --json
+
+# Stage only — prepare .devlink/ without modifying package.json
+dev-link plan --mode dev --json | dev-link stage --json
+
+# Full pipeline with interception point
+dev-link plan --mode dev --json > plan.json
+dev-link stage --plan plan.json --json > stage.json
+# ... inspect staged packages, reconcile peer deps, etc. ...
+dev-link apply --stage stage.json --plan plan.json --json
 ```
 
 ### Feature Branch Isolation

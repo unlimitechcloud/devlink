@@ -12,7 +12,6 @@ import { Command } from "commander";
 import {
   handlePublish,
   handlePush,
-  handleInstall,
   handleList,
   handleResolve,
   handleConsumers,
@@ -22,6 +21,15 @@ import {
   handleTree,
 } from "./commands/index.js";
 import { handleDocs } from "./commands/docs.js";
+import { executePlan } from "./pipeline/plan.js";
+import { executeStage } from "./pipeline/stage.js";
+import { executeInject } from "./pipeline/inject.js";
+import { executeNpmInstall } from "./pipeline/npm-install.js";
+import { executeLink } from "./pipeline/link.js";
+import { executeHydrate } from "./pipeline/hydrate.js";
+import { executeApply } from "./pipeline/apply.js";
+import { executeInstall, executeInstallRecursive } from "./pipeline/install.js";
+import { createOutputRouter } from "./pipeline/output-router.js";
 import { setRepoPath, DEFAULT_NAMESPACE } from "./constants.js";
 
 // Read version from package.json
@@ -36,6 +44,13 @@ const COMMAND_DOCS: Record<string, string> = {
   publish: "publishing/publish",
   push: "publishing/push",
   install: "installation/install",
+  plan: "installation/plan",
+  stage: "installation/stage",
+  inject: "installation/inject",
+  "npm-install": "installation/npm-install",
+  link: "installation/link",
+  hydrate: "installation/hydrate",
+  apply: "installation/apply",
   list: "inspection/list",
   resolve: "inspection/resolve",
   consumers: "inspection/consumers",
@@ -84,8 +99,9 @@ program
   .command("publish")
   .description("Publish a package to the store")
   .option(`-n, --namespace <name>`, `Target namespace (default: ${DEFAULT_NAMESPACE})`)
+  .option("--json", "Output structured JSON to stdout")
   .action(async (opts) => {
-    await handlePublish({ namespace: opts.namespace });
+    await handlePublish({ namespace: opts.namespace, json: !!opts.json });
   });
 
 // ── push ──────────────────────────────────────────────────────────────────────
@@ -94,8 +110,259 @@ program
   .command("push")
   .description("Publish and update all consumer projects")
   .option(`-n, --namespace <name>`, `Target namespace (default: ${DEFAULT_NAMESPACE})`)
+  .option("--json", "Output structured JSON to stdout")
   .action(async (opts) => {
-    await handlePush({ namespace: opts.namespace });
+    await handlePush({ namespace: opts.namespace, json: !!opts.json });
+  });
+
+// ── plan ───────────────────────────────────────────────────────────────────
+
+program
+  .command("plan")
+  .description("Resolve packages and produce an installation plan")
+  .option("-c, --config <path>", "Path to config file")
+  .option("--config-name <filename>", "Config file name to search for (e.g. webforgeai.config.mjs)")
+  .option("--config-key <key>", "Key within the config export to extract DevLink config from")
+  .option("-m, --mode <name>", "Set install mode (matches config mode name)")
+  .option("-n, --namespaces <list>", "Override namespace precedence (comma-separated)", commaSeparated)
+  .option("-p, --only <list>", "Only plan specific packages (comma-separated)", commaSeparated)
+  .option("--packages <json>", "JSON object of packages to merge/override into config (key-level override)")
+  .option("--json", "Output structured JSON to stdout")
+  .action(async (opts) => {
+    const router = createOutputRouter(!!opts.json);
+    try {
+      const plan = await executePlan({
+        config: opts.config,
+        configName: opts.configName,
+        configKey: opts.configKey,
+        mode: opts.mode,
+        namespaces: opts.namespaces,
+        packages: opts.only,
+        packagesOverride: opts.packages ? JSON.parse(opts.packages) : undefined,
+        json: !!opts.json,
+      });
+
+      router.json(plan);
+
+      if (!opts.json) {
+        const storeCount = plan.packages.store.length;
+        const registryCount = plan.packages.registry.length;
+        const linkCount = plan.packages.link.length;
+        const removeCount = plan.packages.remove.length;
+        router.human(`── Plan ──`);
+        router.human(`  Mode: ${plan.mode || "(universal)"} | Manager: ${plan.manager} | Namespaces: ${plan.namespaces.join(", ")}`);
+        router.human(`  ${storeCount} packages from store, ${registryCount} from registry, ${linkCount} link, ${removeCount} remove`);
+      }
+    } catch (error: any) {
+      router.log(`✗ Plan failed: ${error.message}`);
+      printDocHints("plan");
+      process.exit(1);
+    }
+  });
+
+// ── stage ──────────────────────────────────────────────────────────────────
+
+program
+  .command("stage")
+  .description("Copy resolved packages to .devlink/ staging directory")
+  .option("--plan <path>", "Path to plan JSON file (reads from stdin if omitted)")
+  .option("--json", "Output structured JSON to stdout")
+  .action(async (opts) => {
+    const router = createOutputRouter(!!opts.json);
+    try {
+      const result = await executeStage({
+        plan: opts.plan,
+        json: !!opts.json,
+      });
+
+      router.json(result);
+
+      if (!opts.json) {
+        const stagedCount = result.staged.length;
+        const relinkCount = result.relinked.length;
+        router.human(`── Stage ──`);
+        router.human(`  Staged ${stagedCount} packages to .devlink/`);
+        router.human(`  Re-linked ${relinkCount} internal dependencies`);
+      }
+    } catch (error: any) {
+      router.log(`✗ Stage failed: ${error.message}`);
+      printDocHints("stage");
+      process.exit(1);
+    }
+  });
+
+// ── inject ─────────────────────────────────────────────────────────────────
+
+program
+  .command("inject")
+  .description("Rewrite package.json with dependency references from staged packages")
+  .option("--stage <path>", "Path to stage JSON file (reads from stdin if omitted)")
+  .option("--plan <path>", "Path to plan JSON file")
+  .option("--json", "Output structured JSON to stdout")
+  .action(async (opts) => {
+    const router = createOutputRouter(!!opts.json);
+    try {
+      const result = await executeInject({
+        stage: opts.stage,
+        plan: opts.plan,
+        json: !!opts.json,
+      });
+
+      router.json(result);
+
+      if (!opts.json) {
+        const injectedCount = result.injected.length + result.registry.length;
+        const removedCount = result.removed.length;
+        router.human(`── Inject ──`);
+        router.human(`  Modified package.json: ${injectedCount} injected, ${removedCount} removed`);
+      }
+    } catch (error: any) {
+      router.log(`✗ Inject failed: ${error.message}`);
+      printDocHints("inject");
+      process.exit(1);
+    }
+  });
+
+// ── npm-install ────────────────────────────────────────────────────────────────
+
+program
+  .command("npm-install")
+  .description("Run npm install in the project directory")
+  .option("--npm-ignore-scripts", "Pass --ignore-scripts to npm install")
+  .option("--json", "Output structured JSON to stdout")
+  .action(async (opts) => {
+    const router = createOutputRouter(!!opts.json);
+    try {
+      const result = await executeNpmInstall({
+        ignoreScripts: opts.npmIgnoreScripts,
+        json: !!opts.json,
+      });
+
+      router.json(result);
+
+      if (!opts.json) {
+        router.human(`── npm install ──`);
+        router.human(`  Exit code: ${result.exitCode}`);
+      }
+    } catch (error: any) {
+      router.log(`✗ npm-install failed: ${error.message}`);
+      printDocHints("npm-install");
+      process.exit(1);
+    }
+  });
+
+// ── link ──────────────────────────────────────────────────────────────────────
+
+program
+  .command("link")
+  .description("Create npm links for packages with local path references")
+  .option("--plan <path>", "Path to plan JSON file (reads from stdin if omitted)")
+  .option("--json", "Output structured JSON to stdout")
+  .action(async (opts) => {
+    const router = createOutputRouter(!!opts.json);
+    try {
+      const result = await executeLink({
+        plan: opts.plan,
+        json: !!opts.json,
+      });
+
+      router.json(result);
+
+      if (!opts.json) {
+        router.human(`── Link ──`);
+        for (const entry of result.linked) {
+          router.human(`  ${entry.name} → ${entry.path} ✓`);
+        }
+        for (const entry of result.failed) {
+          router.human(`  ${entry.name} → ${entry.path} ✗ (exit ${entry.exitCode})`);
+        }
+        router.human(`  ${result.linked.length} linked, ${result.failed.length} failed`);
+      }
+    } catch (error: any) {
+      router.log(`✗ Link failed: ${error.message}`);
+      printDocHints("link");
+      process.exit(1);
+    }
+  });
+
+// ── hydrate ───────────────────────────────────────────────────────────────────
+
+program
+  .command("hydrate")
+  .description("Run npm install and link packages (composite: npm-install → link)")
+  .option("--plan <path>", "Path to plan JSON file (for link entries)")
+  .option("--npm-ignore-scripts", "Pass --ignore-scripts to npm install")
+  .option("--json", "Output structured JSON to stdout")
+  .action(async (opts) => {
+    const router = createOutputRouter(!!opts.json);
+    try {
+      const result = await executeHydrate({
+        plan: opts.plan,
+        ignoreScripts: opts.npmIgnoreScripts,
+        json: !!opts.json,
+      });
+
+      router.json(result);
+
+      if (!opts.json) {
+        const npmExit = result.trace?.["npm-install"]
+          ? (result.trace["npm-install"] as any).exitCode
+          : "?";
+        const linkResult = result.trace?.link as any;
+        const linkedCount = linkResult?.linked?.length ?? 0;
+        const failedCount = linkResult?.failed?.length ?? 0;
+        router.human(`── Hydrate ──`);
+        router.human(`  npm install exit code: ${npmExit}`);
+        router.human(`  ${linkedCount} linked, ${failedCount} failed`);
+      }
+    } catch (error: any) {
+      router.log(`✗ Hydrate failed: ${error.message}`);
+      printDocHints("hydrate");
+      process.exit(1);
+    }
+  });
+
+// ── apply ─────────────────────────────────────────────────────────────────────
+
+program
+  .command("apply")
+  .description("Inject dependencies and hydrate project (composite: inject → hydrate)")
+  .option("--stage <path>", "Path to stage JSON file (reads from stdin if omitted)")
+  .option("--plan <path>", "Path to plan JSON file")
+  .option("--npm-ignore-scripts", "Pass --ignore-scripts to npm install")
+  .option("--json", "Output structured JSON to stdout")
+  .action(async (opts) => {
+    const router = createOutputRouter(!!opts.json);
+    try {
+      const result = await executeApply({
+        stage: opts.stage,
+        plan: opts.plan,
+        ignoreScripts: opts.npmIgnoreScripts,
+        json: !!opts.json,
+      });
+
+      router.json(result);
+
+      if (!opts.json) {
+        const injectResult = result.trace?.inject as any;
+        const hydrateResult = result.trace?.hydrate as any;
+        const injectedCount = (injectResult?.injected?.length ?? 0) + (injectResult?.registry?.length ?? 0);
+        const removedCount = injectResult?.removed?.length ?? 0;
+        const npmExit = hydrateResult?.trace?.["npm-install"]
+          ? (hydrateResult.trace["npm-install"] as any).exitCode
+          : "?";
+        const linkedCount = hydrateResult?.trace?.link?.linked?.length ?? 0;
+        const failedCount = hydrateResult?.trace?.link?.failed?.length ?? 0;
+        router.human(`── Apply ──`);
+        router.human(`  Inject: ${injectedCount} injected, ${removedCount} removed`);
+        router.human(`  npm install exit code: ${npmExit}`);
+        router.human(`  ${linkedCount} linked, ${failedCount} failed`);
+      }
+    } catch (error: any) {
+      router.log(`✗ Apply failed: ${error.message}`);
+      printDocHints("apply");
+      process.exit(1);
+    }
   });
 
 // ── install ───────────────────────────────────────────────────────────────────
@@ -109,47 +376,205 @@ program
   .option("--config-key <key>", "Key within the config export to extract DevLink config from (e.g. devlink)")
   .option("-n, --namespaces <list>", "Override namespace precedence (comma-separated)", commaSeparated)
   .option("-m, --mode <name>", "Set install mode (matches config mode name, e.g. dev, remote)")
+  .option("--packages <json>", "JSON object of packages to merge/override into config (key-level override)")
   .option("--npm-ignore-scripts", "Propagate --ignore-scripts to npm install")
+  .option("--json", "Output structured JSON to stdout")
   .option("-r, --recursive", "Install recursively across all monorepo levels")
-  .action(async (packages: string[], opts) => {
-    if (opts.recursive) {
-      // Recursive mode: use multi-level installer
+  .action(async (only: string[], opts) => {
+    if (opts.recursive && opts.json) {
+      // Recursive + JSON mode: use the new pipeline for structured per-level output
       const { scanTree } = await import("./core/tree.js");
-      const { installMultiLevel } = await import("./core/multilevel.js");
-
-      const mode = opts.mode;
-
-      console.log(`📂 Scanning monorepo...`);
-      const tree = await scanTree(process.cwd());
-      console.log(`  Found ${tree.installLevels.length} install levels, ${tree.isolatedPackages.length} isolated package(s)`);
+      const router = createOutputRouter(true);
 
       try {
-        const result = await installMultiLevel({
-          tree,
-          mode,
-          npmIgnoreScripts: opts.npmIgnoreScripts,
+        const tree = await scanTree(process.cwd());
+        const result = await executeInstallRecursive(tree, {
           config: opts.config,
           configName: opts.configName,
           configKey: opts.configKey,
+          mode: opts.mode,
+          namespaces: opts.namespaces,
+          packages: only.length > 0 ? only : undefined,
+          packagesOverride: opts.packages ? JSON.parse(opts.packages) : undefined,
+          ignoreScripts: opts.npmIgnoreScripts,
+          json: true,
         });
+
+        router.json(result);
 
         if (!result.success) {
           process.exit(1);
         }
       } catch (error: any) {
-        console.error(`\n✗ Recursive install failed: ${error.message}`);
+        router.log(`✗ Recursive install failed: ${error.message}`);
+        printDocHints("install");
+        process.exit(1);
+      }
+    } else if (opts.recursive) {
+      // Recursive mode without JSON: use the pipeline with human output
+      const { scanTree } = await import("./core/tree.js");
+      const router = createOutputRouter(false);
+
+      router.human(`📂 Scanning monorepo...`);
+      const tree = await scanTree(process.cwd());
+      router.human(`  Found ${tree.installLevels.length} install levels, ${tree.isolatedPackages.length} isolated package(s)`);
+
+      try {
+        const result = await executeInstallRecursive(tree, {
+          config: opts.config,
+          configName: opts.configName,
+          configKey: opts.configKey,
+          mode: opts.mode,
+          namespaces: opts.namespaces,
+          packages: only.length > 0 ? only : undefined,
+          packagesOverride: opts.packages ? JSON.parse(opts.packages) : undefined,
+          ignoreScripts: opts.npmIgnoreScripts,
+          json: false,
+        });
+
+        for (const level of result.levels) {
+          const status = level.success ? "✓" : "✗";
+          router.human(`\n── ${level.relativePath} ${status} ──`);
+          if (level.error) {
+            router.human(`  Error: ${level.error}`);
+          }
+        }
+
+        for (const iso of result.isolatedPackages) {
+          const status = iso.success ? "✓" : "✗";
+          router.human(`\n── Isolated: ${iso.relativePath} ${status} ──`);
+          if (iso.error) {
+            router.human(`  Error: ${iso.error}`);
+          }
+        }
+
+        if (result.success) {
+          router.human(`\n✅ Recursive install complete`);
+        } else {
+          router.human(`\n✗ Recursive install completed with errors`);
+          process.exit(1);
+        }
+      } catch (error: any) {
+        router.log(`✗ Recursive install failed: ${error.message}`);
+        printDocHints("install");
+        process.exit(1);
+      }
+    } else if (opts.json) {
+      // JSON mode: use the new pipeline for structured output
+      const router = createOutputRouter(true);
+      try {
+        const result = await executeInstall({
+          config: opts.config,
+          configName: opts.configName,
+          configKey: opts.configKey,
+          mode: opts.mode,
+          namespaces: opts.namespaces,
+          packages: only.length > 0 ? only : undefined,
+          packagesOverride: opts.packages ? JSON.parse(opts.packages) : undefined,
+          ignoreScripts: opts.npmIgnoreScripts,
+          json: true,
+        });
+
+        router.json(result);
+
+        if (!result.success) {
+          process.exit(1);
+        }
+      } catch (error: any) {
+        router.log(`✗ Install failed: ${error.message}`);
+        printDocHints("install");
         process.exit(1);
       }
     } else {
-      await handleInstall({
-        config: opts.config,
-        mode: opts.mode,
-        namespaces: opts.namespaces,
-        npmIgnoreScripts: opts.npmIgnoreScripts,
-        configName: opts.configName,
-        configKey: opts.configKey,
-        packages: packages.length > 0 ? packages : undefined,
-      });
+      // Human-friendly mode: execute steps sequentially with output between each
+      const router = createOutputRouter(false);
+      try {
+        // ── Plan ──
+        router.human(`── Plan ──`);
+        const planResult = await executePlan({
+          config: opts.config,
+          configName: opts.configName,
+          configKey: opts.configKey,
+          mode: opts.mode,
+          namespaces: opts.namespaces,
+          packages: only.length > 0 ? only : undefined,
+          packagesOverride: opts.packages ? JSON.parse(opts.packages) : undefined,
+          json: false,
+        });
+        const storeCount = planResult.packages.store.length;
+        const registryCount = planResult.packages.registry.length;
+        const linkCount = planResult.packages.link.length;
+        const removeCount = planResult.packages.remove.length;
+        const skippedCount = planResult.packages.skipped.length;
+        router.human(`  Mode: ${planResult.mode || "(universal)"} | Manager: ${planResult.manager} | Namespaces: ${planResult.namespaces.join(", ")}`);
+        router.human(`  ${storeCount} from store, ${registryCount} from registry, ${linkCount} link, ${removeCount} remove`);
+        if (skippedCount > 0) {
+          router.human(`  ⚠️  ${skippedCount} skipped:`);
+          for (const s of planResult.packages.skipped) {
+            router.human(`    - ${s.name}@${s.version}: ${s.reason}`);
+          }
+        }
+
+        // ── Stage ──
+        router.human(`\n── Stage ──`);
+        const stageResult = await executeStage({
+          planData: planResult,
+          projectPath: planResult.projectPath,
+          json: false,
+        });
+        router.human(`  Staged ${stageResult.staged.length} packages to .devlink/`);
+        if (stageResult.relinked.length > 0) {
+          router.human(`  Re-linked ${stageResult.relinked.length} internal dependencies`);
+        }
+
+        // ── Inject ──
+        router.human(`\n── Inject ──`);
+        const injectResult = await executeInject({
+          stageData: stageResult,
+          planData: planResult,
+          projectPath: planResult.projectPath,
+          json: false,
+        });
+        const injectedCount = injectResult.injected.length + injectResult.registry.length;
+        const removedInjCount = injectResult.removed.length;
+        const syntheticCount = injectResult.synthetic.length;
+        router.human(`  Modified package.json: ${injectedCount} injected, ${removedInjCount} removed${syntheticCount > 0 ? `, ${syntheticCount} synthetic` : ""}`);
+
+        // ── npm install ──
+        router.human(`\n── npm install ──`);
+        const npmResult = await executeNpmInstall({
+          projectPath: planResult.projectPath,
+          ignoreScripts: opts.npmIgnoreScripts,
+          json: false,
+        });
+        if (npmResult.exitCode !== 0) {
+          router.human(`  ✗ npm install failed (exit code ${npmResult.exitCode})`);
+          process.exit(1);
+        }
+        router.human(`  Exit code: ${npmResult.exitCode}`);
+
+        // ── Link ──
+        if (planResult.packages.link.length > 0) {
+          router.human(`\n── Link ──`);
+          const linkResult = await executeLink({
+            planData: planResult,
+            projectPath: planResult.projectPath,
+            json: false,
+          });
+          for (const entry of linkResult.linked) {
+            router.human(`  ${entry.name} → ${entry.path} ✓`);
+          }
+          for (const entry of linkResult.failed) {
+            router.human(`  ${entry.name} → ${entry.path} ✗ (exit ${entry.exitCode})`);
+          }
+        }
+
+        router.human(`\n✅ Install complete`);
+      } catch (error: any) {
+        router.human(`\n✗ Install failed: ${error.message}`);
+        printDocHints("install");
+        process.exit(1);
+      }
     }
   });
 
@@ -161,6 +586,7 @@ program
   .option("-n, --namespaces <list>", "Filter by namespaces (comma-separated)", commaSeparated)
   .option("-p, --packages [list]", "Group by package, optionally filter")
   .option("--flat", "Use flat output format (default: tree)")
+  .option("--json", "Output structured JSON to stdout")
   .action(async (opts) => {
     // -p can be boolean (true) or a string; normalize to string[] | undefined
     let packages: string[] | undefined;
@@ -173,6 +599,7 @@ program
       namespaces: opts.namespaces,
       packages,
       flat: opts.flat,
+      json: !!opts.json,
     });
   });
 
@@ -185,12 +612,14 @@ program
   .option("-n, --namespaces <list>", "Namespace precedence (comma-separated)", commaSeparated)
   .option("--flat", "Use flat output format")
   .option("--path", "Output only store paths (machine-readable)")
+  .option("--json", "Output structured JSON to stdout")
   .action(async (specs: string[], opts) => {
     await handleResolve({
       specs,
       namespaces: opts.namespaces,
       flat: opts.flat,
       path: opts.path,
+      json: !!opts.json,
     });
   });
 
@@ -203,12 +632,14 @@ program
   .option("-n, --namespace <name>", "Filter by namespace")
   .option("--flat", "Use flat output format")
   .option("--prune", "Remove projects that no longer exist")
+  .option("--json", "Output structured JSON to stdout")
   .action(async (opts) => {
     await handleConsumers({
       package: opts.package,
       namespace: opts.namespace,
       flat: opts.flat,
       prune: opts.prune,
+      json: !!opts.json,
     });
   });
 
@@ -219,10 +650,12 @@ program
   .description("Remove packages, versions, or namespaces")
   .argument("<target>", "What to remove (pkg@version, pkg, or namespace)")
   .option("-n, --namespace <name>", "Target namespace (required for packages)")
+  .option("--json", "Output structured JSON to stdout")
   .action(async (target: string, opts) => {
     await handleRemove({
       target,
       namespace: opts.namespace,
+      json: !!opts.json,
     });
   });
 
@@ -232,8 +665,9 @@ program
   .command("verify")
   .description("Verify store integrity")
   .option("--fix", "Automatically fix issues found")
+  .option("--json", "Output structured JSON to stdout")
   .action(async (opts) => {
-    await handleVerify({ fix: opts.fix });
+    await handleVerify({ fix: opts.fix, json: !!opts.json });
   });
 
 // ── prune ─────────────────────────────────────────────────────────────────────
@@ -243,10 +677,12 @@ program
   .description("Remove orphaned packages from disk")
   .option("-n, --namespace <name>", "Only prune in specific namespace")
   .option("--dry-run", "Show what would be removed without removing")
+  .option("--json", "Output structured JSON to stdout")
   .action(async (opts) => {
     await handlePrune({
       namespace: opts.namespace,
       dryRun: opts.dryRun,
+      json: !!opts.json,
     });
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "@unlimitechcloud/devlink",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "description": "Package management utility for npm projects and monorepos — local library development with namespace-isolated store, environment-based install modes for local and published registry workflows, and declarative configuration",
   "type": "module",
   "main": "dist/index.js",
@@ -29,6 +29,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
+    "pack:local": "npm pack --pack-destination /tmp 2>/dev/null | tail -1 | xargs -I{} echo /tmp/{}",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

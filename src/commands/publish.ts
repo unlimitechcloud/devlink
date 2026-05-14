@@ -10,6 +10,7 @@ import { withStoreLock } from "../core/lock.js";
 import { readRegistry, writeRegistry, addPackageToRegistry, removePackageFromRegistry, getVersionFromRegistry } from "../core/registry.js";
 import { ensureNamespace, writePackageSignature, deletePackageVersion } from "../core/store.js";
 import { getPackagePath, DEFAULT_NAMESPACE, SIGNATURE_FILE } from "../constants.js";
+import { createOutputRouter } from "../pipeline/output-router.js";
 
 /**
  * Read package.json from directory
@@ -305,20 +306,27 @@ export async function publishPackage(
 export async function handlePublish(args: {
   namespace?: string;
   cwd?: string;
+  json?: boolean;
 }): Promise<void> {
+  const router = createOutputRouter(!!args.json);
   const workingDir = args.cwd || process.cwd();
   const namespace = args.namespace || DEFAULT_NAMESPACE;
   
-  console.log(`📦 Publishing from ${workingDir} to namespace '${namespace}'...`);
+  router.human(`📦 Publishing from ${workingDir} to namespace '${namespace}'...`);
   
   try {
     const result = await publishPackage(workingDir, namespace);
-    console.log(`✓ Published ${result.name}@${result.version}`);
-    console.log(`  Namespace: ${result.namespace}`);
-    console.log(`  Signature: ${result.signature.slice(0, 8)}`);
-    console.log(`  Files: ${result.files}`);
+    router.json(result);
+    router.human(`✓ Published ${result.name}@${result.version}`);
+    router.human(`  Namespace: ${result.namespace}`);
+    router.human(`  Signature: ${result.signature.slice(0, 8)}`);
+    router.human(`  Files: ${result.files}`);
   } catch (error: any) {
-    console.error(`✗ Publish failed: ${error.message}`);
+    if (args.json) {
+      process.stdout.write(JSON.stringify({ error: error.message }) + "\n");
+    } else {
+      console.error(`✗ Publish failed: ${error.message}`);
+    }
     process.exit(1);
   }
 }
