@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-05-15
+
+### Added
+- `--packages` flag: JSON override to merge/replace packages from config at CLI level
+- `--only` flag: filter which packages to process (renamed from previous `--packages` filter behavior)
+- Improved recursive install output: tree structure with workspace coverage display
+
+### Changed
+- Install pipeline refactored for better integration with consumer CLIs
+- Output shows per-level install status with workspace coverage indicators
+
 ## [2.6.1] - 2026-04-30
 
 ### Fixed

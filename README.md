@@ -400,12 +400,12 @@ Each section has its own agent guide (`agents.md`) with context for that area:
 
 ## Changelog
 
-### Latest: [2.6.0] - 2026-03-18
+### Latest: [2.7.0] - 2026-05-15
 
-- Selective package install via positional arguments (`dev-link install [packages...]`)
-- Simplified CLI: `--mode <name>` is the only mode flag; `--npm-ignore-scripts` replaces `--run-scripts`
-- Staging + npm install is now the only flow — legacy direct copy removed
-- All documentation aligned with new CLI surface
+- `--packages` flag for JSON override of config packages at CLI level
+- `--only` flag to filter which packages to process
+- Improved recursive install output with tree structure and coverage display
+- Install pipeline refactored for better integration with consumer CLIs
 
 📄 [Full Changelog](CHANGELOG.md)
 

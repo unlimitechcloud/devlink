@@ -123,7 +123,7 @@ describe("CLI: Installation (plan)", { timeout: 30000 }, () => {
 
   it("plan with --packages filter → only specified package in output", () => {
     const result = execCli(
-      ["plan", "--json", "--mode", "dev", "--packages", "@test/simple-lib"],
+      ["plan", "--json", "--mode", "dev", "--only", "@test/simple-lib"],
       { cwd: consumerModesPath, repo: storePath }
     );
     expect(result.exitCode).toBe(0);
@@ -150,7 +150,7 @@ describe("CLI: Installation (plan)", { timeout: 30000 }, () => {
 
   it("plan for non-existent package → appears in skipped bucket", () => {
     const result = execCli(
-      ["plan", "--json", "--mode", "dev", "--packages", "@test/nonexistent-pkg"],
+      ["plan", "--json", "--mode", "dev", "--only", "@test/nonexistent-pkg"],
       { cwd: consumerModesPath, repo: storePath }
     );
     // Plan may succeed with skipped packages or fail — depends on config
@@ -165,7 +165,7 @@ describe("CLI: Installation (plan)", { timeout: 30000 }, () => {
 
     // Now plan should show @test/cli-tool in skipped
     const planResult = execCli(
-      ["plan", "--json", "--mode", "dev", "--packages", "@test/cli-tool"],
+      ["plan", "--json", "--mode", "dev", "--only", "@test/cli-tool"],
       { cwd: consumerModesPath, repo: storePath }
     );
     expect(planResult.exitCode).toBe(0);
