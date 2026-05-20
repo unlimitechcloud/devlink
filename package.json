@@ -34,7 +34,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run build",
-    "publish:local": "node dist/cli.js publish"
+    "publish:local": "npm run build && npm unpublish --registry http://localhost:4873 --force 2>/dev/null; npm publish --registry http://localhost:4873"
   },
   "keywords": [
     "npm",
