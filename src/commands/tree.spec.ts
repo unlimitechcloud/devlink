@@ -110,6 +110,7 @@ describe("Tree Command (fixture-based)", () => {
       workspaces: ["packages/*"],
       scripts: { "srv.web": "concurrently ...", build: "tsc" },
     });
+    await fs.writeFile(path.join(root, "packages", "services", "web", "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: {} }));
     await createPackageJson(path.join(root, "packages", "services", "web", "packages", "connector"), {
       name: "connector",
       scripts: { "sst:install": "webforgeai sst install", "sst:dev": "webforgeai sst dev" },
@@ -125,6 +126,7 @@ describe("Tree Command (fixture-based)", () => {
       workspaces: ["packages/*"],
       scripts: { "srv.data": "concurrently ...", build: "tsc" },
     });
+    await fs.writeFile(path.join(root, "packages", "services", "data", "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: {} }));
     await createPackageJson(path.join(root, "packages", "services", "data", "packages", "connector"), {
       name: "connector",
       scripts: { "sst:install": "webforgeai sst install", "sst:dev": "webforgeai sst dev" },
@@ -140,6 +142,7 @@ describe("Tree Command (fixture-based)", () => {
       workspaces: ["packages/connector"],
       scripts: { "app.web": "concurrently ...", build: "vite build" },
     });
+    await fs.writeFile(path.join(root, "packages", "apps", "web", "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: {} }));
     await createPackageJson(path.join(root, "packages", "apps", "web", "packages", "connector"), {
       name: "connector",
       scripts: { "sst:install": "webforgeai sst install" },

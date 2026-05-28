@@ -91,6 +91,12 @@ describe("Tree Scanner", () => {
       scripts: { build: "tsc" },
     });
 
+    // sub-mono has its own package-lock.json → truly isolated sub-monorepo
+    await fs.writeFile(
+      path.join(root, "packages", "sub-mono", "package-lock.json"),
+      JSON.stringify({ lockfileVersion: 3, packages: {} }),
+    );
+
     // packages/sub-mono/packages/connector
     await createPackageJson(path.join(root, "packages", "sub-mono", "packages", "connector"), {
       name: "connector",
@@ -329,6 +335,7 @@ describe("Tree Scanner", () => {
         workspaces: ["packages/*"],
         scripts: { "srv.web": "concurrently ...", build: "npm run build --prefix packages/service", "sst:install": "npm run sst:install --prefix packages/connector" },
       });
+      await fs.writeFile(path.join(root, "packages", "services", "web", "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: {} }));
       await createPackageJson(path.join(root, "packages", "services", "web", "packages", "connector"), {
         name: "connector",
         scripts: { "sst:install": "webforgeai sst install", "sst:dev": "webforgeai sst dev" },
@@ -344,6 +351,7 @@ describe("Tree Scanner", () => {
         workspaces: ["packages/*"],
         scripts: { "srv.data": "concurrently ...", build: "npm run build --prefix packages/service", "sst:install": "npm run sst:install --prefix packages/connector" },
       });
+      await fs.writeFile(path.join(root, "packages", "services", "data", "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: {} }));
       await createPackageJson(path.join(root, "packages", "services", "data", "packages", "connector"), {
         name: "connector",
         scripts: { "sst:install": "webforgeai sst install", "sst:dev": "webforgeai sst dev" },
@@ -359,6 +367,7 @@ describe("Tree Scanner", () => {
         workspaces: ["packages/connector"],
         scripts: { "app.web": "concurrently ...", build: "npm run build --prefix packages/app", "sst:install": "npm run sst:install --prefix packages/connector" },
       });
+      await fs.writeFile(path.join(root, "packages", "apps", "web", "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: {} }));
       await createPackageJson(path.join(root, "packages", "apps", "web", "packages", "connector"), {
         name: "connector",
         scripts: { "sst:install": "webforgeai sst install" },

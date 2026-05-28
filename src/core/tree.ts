@@ -79,15 +79,21 @@ export async function scanTree(
     const mod = await scanModule(wsPath, resolvedRoot, resolvedPaths);
     modules.push(mod);
 
-    // If module has its own workspaces → sub-monorepo
+    // If module has its own workspaces → potential sub-monorepo
+    // Only add as a separate install level if it has its own package-lock.json
+    // (truly isolated). Otherwise, root npm install handles nested workspaces.
     if (mod.hasWorkspaces && maxDepth > 1) {
       const subPkg = await readPackageJson(wsPath);
       const subWorkspaces = subPkg ? extractWorkspaces(subPkg) : [];
-      installLevels.push({
-        path: wsPath,
-        relativePath: path.relative(resolvedRoot, wsPath),
-        workspaces: subWorkspaces,
-      });
+
+      const hasOwnLockfile = await fileExists(path.join(wsPath, 'package-lock.json'));
+      if (hasOwnLockfile) {
+        installLevels.push({
+          path: wsPath,
+          relativePath: path.relative(resolvedRoot, wsPath),
+          workspaces: subWorkspaces,
+        });
+      }
 
       const subResolvedPaths = await resolveWorkspaceGlobs(wsPath, subWorkspaces);
 
