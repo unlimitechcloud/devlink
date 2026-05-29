@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-05-29
+
+### Fixed
+- Skip `npm install` for sub-workspaces already covered by root install (only run if workspace has its own `package-lock.json`).
+- `publish:local` script now unpublishes first for idempotent republish to Verdaccio.
+
 ## [2.7.0] - 2026-05-15
 
 ### Added
